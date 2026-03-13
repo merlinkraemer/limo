@@ -1,8 +1,6 @@
-# Limo
+limo leaderboard! 
 
-Learning project for team workflow + DevOps. Barebones setup with backend ready for frontend development.
-
-## Dev
+dev stuff
 
 ```bash
 npm run dev      # Starts Supabase + Next.js, opens browser
@@ -11,14 +9,14 @@ npm run check    # Lint, typecheck, tests, build with summary
 
 First time: `npm install`, then `supabase start` and copy credentials to `.env.local`.
 
-## Stack
+stack
 
 - Next.js 16 (App Router)
 - React 19 + TypeScript
 - Supabase (DB + storage)
 - Vitest (unit tests)
 
-## Structure
+tree
 
 ```
 src/
@@ -31,7 +29,7 @@ src/
 └── types/             # TypeScript types
 ```
 
-## Scripts
+scripts
 
 | Command | Description |
 |---------|-------------|
@@ -40,7 +38,7 @@ src/
 | `npm run test` | Unit tests |
 | `npm run build` | Production build |
 
-## Docs
+docs
 
 - `CONTRIBUTING.md` — branching, PRs, review rules
 - `docs/planning/` — roadmap, status, workflow
