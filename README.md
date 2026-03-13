@@ -39,6 +39,4 @@ scripts
 | `npm run build` | Production build |
 
 docs
-
-- `CONTRIBUTING.md` — branching, PRs, review rules
 - `docs/planning/` — roadmap, status, workflow
