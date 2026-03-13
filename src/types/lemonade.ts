@@ -10,6 +10,7 @@ export interface Lemonade {
   overall_score: number;
   image_url: string | null;
   location_city: string | null;
+  added_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -22,6 +23,7 @@ export interface CreateLemonadeInput {
   sournessRating: number;
   imageUrl?: string;
   locationCity?: string;
+  addedBy?: string;
 }
 
 // Form state for useActionState
@@ -33,6 +35,7 @@ export interface FormState {
     sournessRating?: string[];
     imageUrl?: string[];
     locationCity?: string[];
+    addedBy?: string[];
     _form?: string[];
   };
   message?: string;
@@ -61,6 +64,11 @@ export const lemonadeFormSchema = z.object({
     .string()
     .min(1, 'City must be at least 1 character')
     .max(100, 'City must be less than 100 characters')
+    .optional()
+    .or(z.literal('')),
+  addedBy: z
+    .string()
+    .max(100, 'Name must be less than 100 characters')
     .optional()
     .or(z.literal('')),
 });

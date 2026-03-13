@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Lemonade } from '@/types/lemonade';
 import { addLemonade } from '../actions';
@@ -9,17 +9,41 @@ import { uploadImage } from '@/lib/supabase/storage';
 type SortKey = 'rank' | 'overall_score' | 'flavor_rating' | 'sourness_rating' | 'created_at' | 'name';
 type SortDir = 'asc' | 'desc';
 
+function formatDate(dateStr: string) {
+  const d = new Date(dateStr);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+function LoadingImg({ src, alt }: { src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <>
+      {!loaded && <span className="img-loading">loading image...</span>}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        style={loaded ? undefined : { display: 'none' }}
+      />
+    </>
+  );
+}
+
 export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
   const router = useRouter();
   const [sortKey, setSortKey] = useState<SortKey>('rank');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showRules, setShowRules] = useState(false);
-  const [selectedEntry, setSelectedEntry] = useState<Lemonade | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flavorRating, setFlavorRating] = useState(0);
   const [sournessRating, setSournessRating] = useState(0);
+  const [hoverEntry, setHoverEntry] = useState<Lemonade | null>(null);
+  const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
 
   const rankMap = new Map<string, number>();
   [...initialData]
@@ -69,7 +93,12 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
       const fileInput = form.querySelector<HTMLInputElement>('input[type="file"]');
       const file = fileInput?.files?.[0];
       if (file) {
-        imageUrl = await uploadImage(file);
+        setUploading(true);
+        try {
+          imageUrl = await uploadImage(file);
+        } finally {
+          setUploading(false);
+        }
       }
 
       const result = await addLemonade({
@@ -79,6 +108,7 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
         sournessRating,
         imageUrl,
         locationCity: (formData.get('locationCity') as string) || undefined,
+        addedBy: (formData.get('addedBy') as string) || undefined,
       });
 
       if ('error' in result) {
@@ -148,33 +178,68 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
                 </td>
               </tr>
             ) : (
-              sorted.map((entry, i) => (
-                <tr
-                  key={entry.id}
-                  onClick={() => setSelectedEntry(entry)}
-                  className="clickable"
-                >
-                  <td>{medals[rankMap.get(entry.id)!] || rankMap.get(entry.id)}</td>
-                  <td>{entry.name}</td>
-                  <td>{entry.overall_score.toFixed(1)} ☆</td>
-                  <td>{entry.flavor_rating} ☆</td>
-                  <td>{entry.sourness_rating} ☆</td>
-                  <td className="col-date-cell">{new Date(entry.created_at).toLocaleDateString()}</td>
-                </tr>
-              ))
+              sorted.map((entry) => {
+                const isExpanded = expandedId === entry.id;
+                return (
+                  <React.Fragment key={entry.id}>
+                    <tr
+                      onClick={() => { setExpandedId(isExpanded ? null : entry.id); setHoverEntry(null); }}
+                      className={`clickable${isExpanded ? ' expanded' : ''}`}
+                      onMouseEnter={() => !isExpanded && entry.image_url && setHoverEntry(entry)}
+                      onMouseMove={e => !isExpanded && entry.image_url && setHoverPos({ x: e.clientX, y: e.clientY })}
+                      onMouseLeave={() => setHoverEntry(null)}
+                    >
+                      <td>{medals[rankMap.get(entry.id)!] || rankMap.get(entry.id)}</td>
+                      <td>{entry.name}</td>
+                      <td>{entry.overall_score.toFixed(1)} ☆</td>
+                      <td>{entry.flavor_rating} ☆</td>
+                      <td>{entry.sourness_rating} ☆</td>
+                      <td className="col-date-cell">{formatDate(entry.created_at)}</td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="detail-row">
+                        <td colSpan={6}>
+                          <div className="row-detail">
+                            {entry.image_url && (
+                              <div className="detail-image">
+                                <LoadingImg src={entry.image_url} alt={entry.name} />
+                              </div>
+                            )}
+                            <div className="detail-info">
+                              {entry.description && <p>{entry.description}</p>}
+                              {entry.location_city && <p><span className="detail-label">city: </span>{entry.location_city}</p>}
+                              <p><span className="detail-label">added: </span>{formatDate(entry.created_at)}</p>
+                              {entry.added_by && <p><span className="detail-label">added by: </span>{entry.added_by}</p>}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
 
+      {hoverEntry?.image_url && (
+        <div
+          className="hover-preview"
+          style={{ left: hoverPos.x + 16, top: hoverPos.y + 16 }}
+        >
+          <LoadingImg src={hoverEntry.image_url} alt={hoverEntry.name} />
+        </div>
+      )}
+
       {showAddModal && (
-        <div className="modal-overlay" onClick={() => !submitting && setShowAddModal(false)}>
+        <div className="modal-overlay" onClick={() => !submitting && !uploading && setShowAddModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => !submitting && setShowAddModal(false)}>x</button>
+            <button className="modal-close" onClick={() => !submitting && !uploading && setShowAddModal(false)}>x</button>
             <h2>add new entry</h2>
             <form onSubmit={handleSubmit}>
               <label>
-                name *
+                lemonade name *
                 <input type="text" name="name" required minLength={2} maxLength={100} />
               </label>
               <label>
@@ -219,10 +284,14 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
                   {sournessRating > 0 && <span className="star-count">{sournessRating}/10</span>}
                 </div>
               </label>
+              <label>
+                your name
+                <input type="text" name="addedBy" maxLength={100} />
+              </label>
               {error && <p className="error">{error}</p>}
               <div className="modal-actions">
-                <button type="submit" className="link-btn" disabled={submitting}>
-                  {submitting ? 'submitting...' : 'submit'}
+                <button type="submit" className="link-btn" disabled={submitting || uploading}>
+                  {uploading ? 'uploading image...' : submitting ? 'submitting...' : 'submit'}
                 </button>
               </div>
             </form>
@@ -241,27 +310,6 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
         </div>
       )}
 
-      {selectedEntry && (
-        <div className="modal-overlay" onClick={() => setSelectedEntry(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setSelectedEntry(null)}>x</button>
-            <h2>{selectedEntry.name}</h2>
-            <p>{selectedEntry.description}</p>
-            <br />
-            <p>overall: {selectedEntry.overall_score.toFixed(1)}/10</p>
-            <p>flavor: {selectedEntry.flavor_rating}/10</p>
-            <p>sourness: {selectedEntry.sourness_rating}/10</p>
-            {selectedEntry.location_city && <p>city: {selectedEntry.location_city}</p>}
-            <p>added: {new Date(selectedEntry.created_at).toLocaleDateString()}</p>
-            {selectedEntry.image_url && (
-              <div className="detail-image">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={selectedEntry.image_url} alt={selectedEntry.name} />
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </>
   );
 }

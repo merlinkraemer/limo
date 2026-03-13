@@ -11,6 +11,7 @@ export async function addLemonade(data: {
   sournessRating: number;
   imageUrl?: string;
   locationCity?: string;
+  addedBy?: string;
 }): Promise<{ success: true } | { error: string }> {
   const parsed = lemonadeFormSchema.safeParse(data);
   if (!parsed.success) {
@@ -27,9 +28,10 @@ export async function addLemonade(data: {
       sournessRating: parsed.data.sournessRating,
       imageUrl: parsed.data.imageUrl || undefined,
       locationCity: parsed.data.locationCity || undefined,
+      addedBy: parsed.data.addedBy || undefined,
     });
-  } catch {
-    return { error: 'Failed to create entry' };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Failed to create entry' };
   }
 
   revalidatePath('/');
