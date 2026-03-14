@@ -4,6 +4,15 @@ import { revalidatePath } from 'next/cache';
 import { createLemonade } from '@/services/lemonade-service';
 import { lemonadeFormSchema } from '@/types/lemonade';
 
+const STORAGE_PUBLIC_PREFIX = '/storage/v1/object/public/';
+
+function isAllowedImageUrl(url: string): boolean {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  if (!base) return false;
+  const allowedPrefix = `${base.replace(/\/$/, '')}${STORAGE_PUBLIC_PREFIX}`;
+  return url.startsWith(allowedPrefix);
+}
+
 export async function addLemonade(data: {
   name: string;
   description: string;
@@ -18,6 +27,10 @@ export async function addLemonade(data: {
     const errors = parsed.error.flatten().fieldErrors;
     const firstError = Object.values(errors).flat()[0];
     return { error: firstError || 'Invalid input' };
+  }
+
+  if (parsed.data.imageUrl && !isAllowedImageUrl(parsed.data.imageUrl)) {
+    return { error: 'Image URL must be from your storage bucket' };
   }
 
   try {
