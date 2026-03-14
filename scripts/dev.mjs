@@ -109,10 +109,20 @@ async function main() {
   log('✅ Supabase is ready', GREEN);
   
   // Start Next.js
-  const port = process.env.PORT || 3000;
+  const port = process.env.PORT || 4777;
+
+  // Kill anything already on the port
+  try {
+    const pid = execSync(`lsof -ti:${port} 2>/dev/null`, { encoding: 'utf8' }).trim();
+    if (pid) {
+      log(`⚠️  Port ${port} in use (PID ${pid}), killing...`, YELLOW);
+      execSync(`kill -9 ${pid}`);
+    }
+  } catch {}
+
   log(`\n🌐 Starting Next.js on port ${port}...`, CYAN);
   log(`   Opening browser at http://localhost:${port}\n`, CYAN);
-  
+
   const nextProcess = spawn('next', ['dev', '--port', port], {
     stdio: 'inherit',
     shell: true

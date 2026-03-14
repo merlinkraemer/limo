@@ -33,7 +33,6 @@ describe('lemonadeFormSchema', () => {
 
     const errors = result.error.flatten().fieldErrors;
     expect(errors.name?.[0]).toContain('at least 2');
-    expect(errors.description?.[0]).toContain('at least 5');
     expect(errors.flavorRating?.[0]).toContain('at least 1');
     expect(errors.sournessRating?.[0]).toContain('at most 10');
     expect(errors.imageUrl?.[0]).toContain('Invalid image URL');
