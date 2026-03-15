@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Lemonade } from '@/types/lemonade';
 import { addLemonade } from '../actions';
@@ -8,6 +8,14 @@ import { uploadImage } from '@/lib/supabase/storage';
 
 type SortKey = 'rank' | 'overall_score' | 'flavor_rating' | 'sourness_rating' | 'created_at' | 'name';
 type SortDir = 'asc' | 'desc';
+
+function useIsTouch() {
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    setIsTouch('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
+  return isTouch;
+}
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr);
@@ -32,6 +40,7 @@ function LoadingImg({ src, alt }: { src: string; alt: string }) {
 
 export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
   const router = useRouter();
+  const isTouch = useIsTouch();
   const [sortKey, setSortKey] = useState<SortKey>('rank');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -44,6 +53,13 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
   const [sournessRating, setSournessRating] = useState(0);
   const [hoverEntry, setHoverEntry] = useState<Lemonade | null>(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
+  const [fileName, setFileName] = useState<string | null>(null);
+
+  const modalOpen = showAddModal || showRules;
+  useEffect(() => {
+    document.body.style.overflow = modalOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [modalOpen]);
 
   const rankMap = new Map<string, number>();
   [...initialData]
@@ -117,6 +133,7 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
         setShowAddModal(false);
         setFlavorRating(0);
         setSournessRating(0);
+        setFileName(null);
         router.refresh();
       }
     } catch (err) {
@@ -130,10 +147,10 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
     <>
       <header>
         <h1>
-          🍋&ensp;limo leaderboard
+          🍋 lemolist — rank ur lemonade!
           <span className="header-links">
-            <button className="link-btn" onClick={() => setShowRules(true)}>rules</button>
-            <button className="link-btn link-btn-red" onClick={() => setShowAddModal(true)}>add your lemonade</button>
+            <button className="link-btn desktop-only" onClick={() => setShowRules(true)}>rules</button>
+            <button className="link-btn link-btn-red desktop-only" onClick={() => setShowAddModal(true)}>add your lemonade</button>
           </span>
         </h1>
       </header>
@@ -185,15 +202,15 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
                     <tr
                       onClick={() => { setExpandedId(isExpanded ? null : entry.id); setHoverEntry(null); }}
                       className={`clickable${isExpanded ? ' expanded' : ''}`}
-                      onMouseEnter={() => !isExpanded && entry.image_url && setHoverEntry(entry)}
-                      onMouseMove={e => !isExpanded && entry.image_url && setHoverPos({ x: e.clientX, y: e.clientY })}
-                      onMouseLeave={() => setHoverEntry(null)}
+                      onMouseEnter={() => !isTouch && !isExpanded && entry.image_url && setHoverEntry(entry)}
+                      onMouseMove={e => !isTouch && !isExpanded && entry.image_url && setHoverPos({ x: e.clientX, y: e.clientY })}
+                      onMouseLeave={() => !isTouch && setHoverEntry(null)}
                     >
                       <td>{medals[rankMap.get(entry.id)!] || rankMap.get(entry.id)}</td>
                       <td>{entry.name}</td>
                       <td>{entry.overall_score.toFixed(1)} ☆</td>
-                      <td>{entry.flavor_rating} ☆</td>
-                      <td>{entry.sourness_rating} ☆</td>
+                      <td className="desktop-only">{entry.flavor_rating} ☆</td>
+                      <td className="desktop-only">{entry.sourness_rating} ☆</td>
                       <td className="col-date-cell">{formatDate(entry.created_at)}</td>
                     </tr>
                     {isExpanded && (
@@ -206,10 +223,16 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
                               </div>
                             )}
                             <div className="detail-info">
-                              {entry.description && <p>{entry.description}</p>}
-                              {entry.location_city && <p><span className="detail-label">city: </span>{entry.location_city}</p>}
-                              <p><span className="detail-label">added: </span>{formatDate(entry.created_at)}</p>
-                              {entry.added_by && <p><span className="detail-label">added by: </span>{entry.added_by}</p>}
+                              {entry.description && <p className="detail-description">{entry.description}</p>}
+                              <div className="detail-scores">
+                                <span>flavor: {entry.flavor_rating}/10</span>
+                                <span>sourness: {entry.sourness_rating}/10</span>
+                              </div>
+                              <div className="detail-meta">
+                                {entry.location_city && <span>{entry.location_city}</span>}
+                                <span>{formatDate(entry.created_at)}</span>
+                                {entry.added_by && <span>by {entry.added_by}</span>}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -236,64 +259,75 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
         <div className="modal-overlay" onClick={() => !submitting && !uploading && setShowAddModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <button className="modal-close" onClick={() => !submitting && !uploading && setShowAddModal(false)}>x</button>
-            <h2>add new entry</h2>
+            <h2>add ur lemonade</h2>
             <form onSubmit={handleSubmit}>
               <label>
                 lemonade name *
-                <input type="text" name="name" required minLength={2} maxLength={100} />
+                <input type="text" name="name" required minLength={2} maxLength={100} placeholder="e.g. San Pellegrino Limonata" />
               </label>
               <label>
                 description
-                <textarea name="description" maxLength={500} rows={3} />
+                <textarea name="description" maxLength={500} rows={2} placeholder="special flavor? Tastes like bubblegum?? type whatever here" />
               </label>
-              <label>
-                image
-                <input type="file" name="image" accept="image/*" />
-              </label>
-              <label>
-                city
-                <input type="text" name="locationCity" maxLength={100} />
-              </label>
-              <label>
-                flavor rating *
-                <div className="star-rating">
-                  {Array.from({ length: 10 }, (_, i) => (
-                    <span
-                      key={i}
-                      className={i < flavorRating ? 'star filled' : 'star'}
-                      onClick={() => setFlavorRating(i + 1)}
-                    >
-                      {i < flavorRating ? '★' : '☆'}
-                    </span>
-                  ))}
-                  {flavorRating > 0 && <span className="star-count">{flavorRating}/10</span>}
-                </div>
-              </label>
-              <label>
-                sourness rating *
-                <div className="star-rating">
-                  {Array.from({ length: 10 }, (_, i) => (
-                    <span
-                      key={i}
-                      className={i < sournessRating ? 'star filled' : 'star'}
-                      onClick={() => setSournessRating(i + 1)}
-                    >
-                      {i < sournessRating ? '★' : '☆'}
-                    </span>
-                  ))}
-                  {sournessRating > 0 && <span className="star-count">{sournessRating}/10</span>}
-                </div>
-              </label>
-              <label>
-                your name
-                <input type="text" name="addedBy" maxLength={100} />
-              </label>
-              {error && <p className="error">{error}</p>}
-              <div className="modal-actions">
-                <button type="submit" className="link-btn" disabled={submitting || uploading}>
-                  {uploading ? 'uploading image...' : submitting ? 'submitting...' : 'submit'}
-                </button>
+              <div className="rating-row">
+                <label>
+                  flavor *
+                  <div className="star-rating">
+                    {Array.from({ length: 10 }, (_, i) => (
+                      <span
+                        key={i}
+                        className={i < flavorRating ? 'star filled' : 'star'}
+                        onClick={() => setFlavorRating(i + 1)}
+                      >
+                        {i < flavorRating ? '★' : '☆'}
+                      </span>
+                    ))}
+                    {flavorRating > 0 && <span className="star-count">{flavorRating}/10</span>}
+                  </div>
+                </label>
+                <label>
+                  sourness *
+                  <div className="star-rating">
+                    {Array.from({ length: 10 }, (_, i) => (
+                      <span
+                        key={i}
+                        className={i < sournessRating ? 'star filled' : 'star'}
+                        onClick={() => setSournessRating(i + 1)}
+                      >
+                        {i < sournessRating ? '★' : '☆'}
+                      </span>
+                    ))}
+                    {sournessRating > 0 && <span className="star-count">{sournessRating}/10</span>}
+                  </div>
+                </label>
               </div>
+              <div className="file-upload">
+                <input
+                  type="file"
+                  name="image"
+                  accept="image/*"
+                  id="image-input"
+                  className="file-input-hidden"
+                  onChange={e => setFileName(e.target.files?.[0]?.name ?? null)}
+                />
+                <label htmlFor="image-input" className="file-upload-btn">
+                  {fileName ? fileName : '+ add photo'}
+                </label>
+              </div>
+              <div className="form-row">
+                <label>
+                  city
+                  <input type="text" name="locationCity" maxLength={100} />
+                </label>
+                <label>
+                  your name
+                  <input type="text" name="addedBy" maxLength={100} />
+                </label>
+              </div>
+              {error && <p className="error">{error}</p>}
+              <button type="submit" className="submit-btn" disabled={submitting || uploading}>
+                {uploading ? 'uploading image...' : submitting ? 'submitting...' : 'add lemonade'}
+              </button>
             </form>
           </div>
         </div>
@@ -310,6 +344,13 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
         </div>
       )}
 
+      <button className="fab mobile-only" onClick={() => setShowAddModal(true)} aria-label="Add lemonade">+</button>
+
+      <footer className="site-footer">
+        help us find the best lemonade ever pls 👉👈
+        <span className="footer-divider"> · </span>
+        <button className="link-btn footer-rules-link" onClick={() => setShowRules(true)}>rules</button>
+      </footer>
     </>
   );
 }

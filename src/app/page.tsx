@@ -9,7 +9,6 @@ export default async function HomePage() {
   return (
     <main>
       <Leaderboard initialData={lemonades} />
-      <footer className="site-footer">help us find the best lemonade ever pls 👉👈</footer>
     </main>
   );
 }
