@@ -467,6 +467,9 @@ td.empty {
 
 .dots::after {
   content: '';
+  display: inline-block;
+  width: 1.5em;
+  text-align: left;
   animation: dots 1.2s steps(1) infinite;
 }
 
