@@ -326,7 +326,7 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
                   onChange={e => setFileName(e.target.files?.[0]?.name ?? null)}
                 />
                 <label htmlFor="image-input" className={`file-upload-btn${uploading ? ' uploading' : ''}`}>
-                  {uploading ? 'uploading...' : fileName ? fileName : '+ add photo'}
+                  {uploading ? <span>uploading<span className="dots" /></span> : fileName ? fileName : '+ add photo'}
                 </label>
               </div>
               <div className="form-row">
@@ -341,7 +341,7 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
               </div>
               {error && <p className="error">{error}</p>}
               <button type="submit" className="submit-btn" disabled={submitting || uploading}>
-                {uploading ? 'uploading image...' : submitting ? 'submitting...' : 'add lemonade'}
+                {uploading ? <span>uploading image<span className="dots" /></span> : submitting ? <span>submitting<span className="dots" /></span> : 'add lemonade'}
               </button>
             </form>
           </div>
@@ -359,7 +359,7 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
         </div>
       )}
 
-      <button className="fab mobile-only" onClick={() => setShowAddModal(true)} aria-label="Add lemonade">+</button>
+      <button className="fab mobile-only" onClick={() => setShowAddModal(true)} aria-label="Add lemonade" />
 
       <footer className="site-footer">
         help us find the best lemonade ever pls 👉👈

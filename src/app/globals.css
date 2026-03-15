@@ -458,6 +458,18 @@ td.empty {
   display: none;
 }
 
+@keyframes dots {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
+}
+
+.dots::after {
+  content: '';
+  animation: dots 1.2s steps(1) infinite;
+}
+
 /* --- Mobile --- */
 @media (max-width: 600px) {
   main {
@@ -495,16 +507,20 @@ td.empty {
     background: #993333;
     color: #fff;
     border: none;
-    font-size: 28px;
-    line-height: 52px;
-    text-align: center;
+    font-size: 0;
     cursor: pointer;
     z-index: 50;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     -webkit-tap-highlight-color: transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  }
+
+  .fab::before {
+    content: '+';
+    font-size: 30px;
+    font-weight: 300;
+    line-height: 52px;
+    display: block;
+    text-align: center;
   }
 
   .fab:active {
