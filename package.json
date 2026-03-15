@@ -13,7 +13,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "node scripts/e2e-ci.mjs",
-    "test:e2e:local": "playwright test"
+    "test:e2e:local": "playwright test",
+    "env:dev": "cp .env.development .env.local && echo 'Switched to development (local Supabase)'",
+    "env:staging": "cp .env.staging .env.local && echo 'Switched to staging'",
+    "env:prod": "cp .env.production .env.local && echo 'Switched to production'",
+    "db:push:staging": "supabase link --project-ref xduxzpriixkxrygulgon && supabase db push --linked",
+    "db:push:prod": "supabase link --project-ref mpbpzxkttsqmsaazxbkk && supabase db push --linked"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",

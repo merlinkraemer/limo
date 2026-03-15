@@ -36,11 +36,15 @@ scripts
 |---------|-------------|
 | `npm run dev` | Full dev env |
 | `npm run check` | All checks |
+| `npm run env:dev` | Switch to local Supabase |
+| `npm run env:staging` | Switch to staging DB |
+| `npm run env:prod` | Switch to production DB |
 | `npm run test` | Unit tests |
 | `npm run test:e2e` | E2E tests (starts Supabase + Next.js) |
 | `npm run test:e2e:local` | E2E tests only (requires dev server running) |
 | `npm run build` | Production build |
 
 docs
-- `docs/TESTING.md` — testing strategy, conventions, troubleshooting
-- `docs/planning/` — roadmap, status, workflow
+- `docs/TESTING.md` — testing strategy
+- `docs/DEPLOYMENT.md` — staging/prod workflow
+- `docs/planning/` — roadmap, status

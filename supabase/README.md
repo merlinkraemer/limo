@@ -2,32 +2,22 @@
 
 This directory contains database migrations and configuration for the Limo project.
 
-## Database Migration
+## Environments
 
-To set up the database:
+| Env | Project | Branch | Switch |
+|-----|---------|--------|--------|
+| Local | `supabase start` | any | `npm run env:dev` |
+| Staging | `limo-staging` | `staging` | `npm run env:staging` |
+| Production | `limo-prod` | `main` | `npm run env:prod` |
 
-1. **Create a Supabase Project**
-   - Go to [Supabase Dashboard](https://supabase.com/dashboard)
-   - Click "New Project"
-   - Choose a strong password and select your region
-   - Wait for the project to be created (2-3 minutes)
+Migrations auto-deploy on push via GitHub Actions (see `.github/workflows/db-migrate.yml`).
 
-2. **Configure Environment Variables**
-   - Copy environment variables from `.env.local` to actual Supabase values:
-     - `NEXT_PUBLIC_SUPABASE_URL`: Project Settings → API → Project URL
-     - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Project Settings → API → anon/public key
-     - `SUPABASE_SERVICE_ROLE_KEY`: Project Settings → API → service_role secret key (keep this secret!)
-   - Update `.env.local` with the real values
+## Manual Migration
 
-3. **Run Database Migration**
-   - Option A: Use Supabase Dashboard SQL Editor
-     - Go to SQL Editor → New Query
-     - Copy contents of `supabase/migrations/001_create_lemonades_table.sql`
-     - Run the query
-   - Option B: Use Supabase CLI (recommended for development)
-     - Install Supabase CLI: `npm install -g supabase`
-     - Link to your project: `supabase link --project-ref YOUR_PROJECT_ID`
-     - Push migrations: `supabase db push`
+```bash
+npm run db:push:staging  # Push to staging
+npm run db:push:prod     # Push to production
+```
 
 ## Storage Bucket Setup
 
