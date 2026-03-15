@@ -5,8 +5,8 @@ test.describe('smoke', () => {
     await page.goto('/');
 
     await expect(page.getByRole('heading', { name: /lemolist/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'add your lemonade' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'rules' })).toBeVisible();
+    await expect(page.locator('header').getByRole('button', { name: 'add your lemonade' })).toBeVisible();
+    await expect(page.locator('header').getByRole('button', { name: 'rules' })).toBeVisible();
   });
 
   test('shows empty state when no entries', async ({ page }) => {
