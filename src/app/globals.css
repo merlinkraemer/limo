@@ -311,6 +311,12 @@ td.empty {
   background: #f0c0c0;
 }
 
+.file-upload-btn.uploading {
+  color: #999;
+  border-style: solid;
+  pointer-events: none;
+}
+
 .modal form textarea {
   resize: vertical;
 }
@@ -490,11 +496,15 @@ td.empty {
     color: #fff;
     border: none;
     font-size: 28px;
-    line-height: 1;
+    line-height: 52px;
+    text-align: center;
     cursor: pointer;
     z-index: 50;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     -webkit-tap-highlight-color: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .fab:active {
@@ -614,6 +624,7 @@ td.empty {
     border: none;
     border-radius: 0;
     padding: 16px;
+    overflow-x: hidden;
   }
 
   .modal-close {
@@ -646,10 +657,14 @@ td.empty {
   }
 
   .star {
-    font-size: 28px;
-    padding: 4px 3px;
-    min-width: 34px;
+    font-size: 24px;
+    padding: 4px 1px;
+    min-width: 0;
     text-align: center;
+  }
+
+  .star-rating {
+    flex-wrap: wrap;
   }
 
   /* Disable hover preview on mobile */

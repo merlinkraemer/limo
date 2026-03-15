@@ -98,23 +98,38 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setSubmitting(true);
     setError(null);
+
+    if (flavorRating === 0 || sournessRating === 0) {
+      setError('please rate both flavor and sourness');
+      return;
+    }
 
     const form = e.currentTarget;
     const formData = new FormData(form);
+    const fileInput = form.querySelector<HTMLInputElement>('input[type="file"]');
+    const file = fileInput?.files?.[0];
+
+    if (file && file.size > 5 * 1024 * 1024) {
+      setError('image is too large - max 5MB');
+      return;
+    }
+
+    setSubmitting(true);
 
     try {
       let imageUrl: string | undefined;
-      const fileInput = form.querySelector<HTMLInputElement>('input[type="file"]');
-      const file = fileInput?.files?.[0];
       if (file) {
         setUploading(true);
         try {
           imageUrl = await uploadImage(file);
-        } finally {
+        } catch {
+          setError('failed to upload image - please try again');
           setUploading(false);
+          setSubmitting(false);
+          return;
         }
+        setUploading(false);
       }
 
       const result = await addLemonade({
@@ -136,8 +151,8 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
         setFileName(null);
         router.refresh();
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+    } catch {
+      setError('something went wrong - please try again');
     } finally {
       setSubmitting(false);
     }
@@ -310,8 +325,8 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
                   className="file-input-hidden"
                   onChange={e => setFileName(e.target.files?.[0]?.name ?? null)}
                 />
-                <label htmlFor="image-input" className="file-upload-btn">
-                  {fileName ? fileName : '+ add photo'}
+                <label htmlFor="image-input" className={`file-upload-btn${uploading ? ' uploading' : ''}`}>
+                  {uploading ? 'uploading...' : fileName ? fileName : '+ add photo'}
                 </label>
               </div>
               <div className="form-row">
