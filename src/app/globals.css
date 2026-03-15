@@ -16,13 +16,6 @@ html, body {
   font-family: Verdana, Geneva, sans-serif;
   font-size: 14px;
   line-height: 1.6;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-html::-webkit-scrollbar,
-body::-webkit-scrollbar {
-  display: none;
 }
 
 main {
@@ -43,7 +36,6 @@ header h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  text-align: center;
 }
 
 .header-links {
@@ -76,37 +68,10 @@ header h1 {
   color: #cc4444;
 }
 
-.link-btn-muted {
-  color: #999;
-}
-
-.link-btn-muted:hover {
-  color: #666;
-}
-
 .link-btn:disabled {
   color: #bbb;
   cursor: not-allowed;
   text-decoration: none;
-}
-
-.add-btn {
-  background: #993333;
-  color: #fff;
-  border: none;
-  font-family: Verdana, Geneva, sans-serif;
-  font-size: 13px;
-  padding: 6px 14px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.add-btn:hover {
-  background: #b33d3d;
-}
-
-.add-btn:active {
-  background: #7a2929;
 }
 
 .table-wrap {
@@ -246,7 +211,6 @@ td.empty {
 .modal {
   background: #fae8e8;
   border: 1px solid #d4a0a0;
-  border-radius: 0;
   padding: 20px;
   position: relative;
   max-width: 500px;
@@ -294,7 +258,6 @@ td.empty {
 }
 
 .modal form input[type="text"],
-.modal form input[type="number"],
 .modal form textarea {
   display: block;
   width: 100%;
@@ -302,7 +265,6 @@ td.empty {
   padding: 6px 8px;
   background: #fff;
   border: 1px solid #d4a0a0;
-  border-radius: 0;
   color: #333;
   font-family: Verdana, Geneva, sans-serif;
   font-size: 16px;
@@ -317,7 +279,6 @@ td.empty {
 }
 
 .modal form input[type="text"]:focus,
-.modal form input[type="number"]:focus,
 .modal form textarea:focus {
   border-color: #993333;
 }
@@ -385,7 +346,6 @@ td.empty {
 .rating-row {
   display: flex;
   flex-direction: column;
-  gap: 0;
 }
 
 .form-row {
@@ -443,10 +403,6 @@ td.empty {
   max-width: 100%;
   border: 1px solid #d4a0a0;
   background: #fae8e8;
-}
-
-.detail-image {
-  margin-top: 12px;
 }
 
 .detail-image img {
@@ -670,7 +626,6 @@ td.empty {
   /* Form layout on mobile */
   .form-row {
     flex-direction: column;
-    gap: 0;
   }
 
   .modal form label {

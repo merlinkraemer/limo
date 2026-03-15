@@ -182,7 +182,7 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
               <th onClick={() => handleSort('sourness_rating')} className="sortable">
                 sourness{sortIndicator('sourness_rating')}
               </th>
-              <th onClick={() => handleSort('created_at')} className="sortable col-date-cell">
+              <th onClick={() => handleSort('created_at')} className="sortable">
                 added{sortIndicator('created_at')}
               </th>
             </tr>
@@ -209,9 +209,9 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
                       <td>{medals[rankMap.get(entry.id)!] || rankMap.get(entry.id)}</td>
                       <td>{entry.name}</td>
                       <td>{entry.overall_score.toFixed(1)} ☆</td>
-                      <td className="desktop-only">{entry.flavor_rating} ☆</td>
-                      <td className="desktop-only">{entry.sourness_rating} ☆</td>
-                      <td className="col-date-cell">{formatDate(entry.created_at)}</td>
+                      <td>{entry.flavor_rating} ☆</td>
+                      <td>{entry.sourness_rating} ☆</td>
+                      <td>{formatDate(entry.created_at)}</td>
                     </tr>
                     {isExpanded && (
                       <tr className="detail-row">
