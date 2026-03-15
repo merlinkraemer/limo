@@ -4,7 +4,7 @@ test.describe('smoke', () => {
   test('page loads and shows leaderboard', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { name: /limo leaderboard/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /lemolist/i })).toBeVisible();
     await expect(page.getByRole('button', { name: 'add your lemonade' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'rules' })).toBeVisible();
   });
