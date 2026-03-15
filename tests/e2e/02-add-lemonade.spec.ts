@@ -6,7 +6,7 @@ test.describe('add lemonade', () => {
 
     await page.getByRole('button', { name: 'add your lemonade' }).click();
 
-    const modal = page.getByRole('heading', { name: 'add new entry' });
+    const modal = page.getByRole('heading', { name: 'add ur lemonade' });
     await expect(modal).toBeVisible();
 
     await page.getByLabel(/lemonade name/i).fill('E2E Test Limo');
@@ -18,9 +18,9 @@ test.describe('add lemonade', () => {
     const sournessStars = page.locator('.star-rating').last().locator('.star');
     await sournessStars.nth(4).click();
 
-    await page.getByRole('button', { name: 'submit' }).click();
+    await page.getByRole('button', { name: 'add lemonade' }).click();
 
-    await expect(page.getByText('submitting...')).toBeHidden({ timeout: 15000 });
+    await expect(page.getByText('submitting')).toBeHidden({ timeout: 15000 });
 
     const errorMsg = page.locator('.modal p.error');
     if (await errorMsg.isVisible()) {
