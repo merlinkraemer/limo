@@ -514,13 +514,25 @@ td.empty {
     -webkit-tap-highlight-color: transparent;
   }
 
+  .fab::before,
+  .fab::after {
+    content: '';
+    position: absolute;
+    background: #fff;
+    border-radius: 1px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
   .fab::before {
-    content: '+';
-    font-size: 30px;
-    font-weight: 300;
-    line-height: 52px;
-    display: block;
-    text-align: center;
+    width: 22px;
+    height: 3px;
+  }
+
+  .fab::after {
+    width: 3px;
+    height: 22px;
   }
 
   .fab:active {
