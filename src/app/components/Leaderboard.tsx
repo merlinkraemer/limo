@@ -10,10 +10,10 @@ type SortKey = 'rank' | 'overall_score' | 'flavor_rating' | 'sourness_rating' | 
 type SortDir = 'asc' | 'desc';
 
 function useIsTouch() {
-  const [isTouch, setIsTouch] = useState(false);
-  useEffect(() => {
-    setIsTouch('ontouchstart' in window || navigator.maxTouchPoints > 0);
-  }, []);
+  const [isTouch] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  });
   return isTouch;
 }
 
