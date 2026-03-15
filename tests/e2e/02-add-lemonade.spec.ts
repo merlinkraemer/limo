@@ -20,7 +20,7 @@ test.describe('add lemonade', () => {
 
     await page.getByRole('button', { name: 'add lemonade' }).click();
 
-    await expect(page.getByText('submitting...')).toBeHidden({ timeout: 15000 });
+    await expect(page.getByText('submitting')).toBeHidden({ timeout: 15000 });
 
     const errorMsg = page.locator('.modal p.error');
     if (await errorMsg.isVisible()) {
