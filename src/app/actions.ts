@@ -2,16 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { createLemonade } from '@/services/lemonade-service';
+import { isAllowedImageUrl } from '@/lib/image-url';
 import { lemonadeFormSchema } from '@/types/lemonade';
-
-const STORAGE_PUBLIC_PREFIX = '/storage/v1/object/public/';
-
-function isAllowedImageUrl(url: string): boolean {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  if (!base) return false;
-  const allowedPrefix = `${base.replace(/\/$/, '')}${STORAGE_PUBLIC_PREFIX}`;
-  return url.startsWith(allowedPrefix);
-}
 
 export async function addLemonade(data: {
   name: string;

@@ -15,6 +15,7 @@ stack
 - React 19 + TypeScript
 - Supabase (DB + storage)
 - Vitest (unit tests)
+- Playwright (E2E tests)
 
 tree
 
@@ -36,7 +37,10 @@ scripts
 | `npm run dev` | Full dev env |
 | `npm run check` | All checks |
 | `npm run test` | Unit tests |
+| `npm run test:e2e` | E2E tests (starts Supabase + Next.js) |
+| `npm run test:e2e:local` | E2E tests only (requires dev server running) |
 | `npm run build` | Production build |
 
 docs
+- `docs/TESTING.md` — testing strategy, conventions, troubleshooting
 - `docs/planning/` — roadmap, status, workflow
