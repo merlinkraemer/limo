@@ -271,9 +271,27 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
       )}
 
       {showAddModal && (
-        <div className="modal-overlay" onClick={() => !submitting && !uploading && setShowAddModal(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            if (!submitting && !uploading) {
+              setShowAddModal(false);
+              setFileName(null);
+            }
+          }}
+        >
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => !submitting && !uploading && setShowAddModal(false)}>x</button>
+            <button
+              className="modal-close"
+              onClick={() => {
+                if (!submitting && !uploading) {
+                  setShowAddModal(false);
+                  setFileName(null);
+                }
+              }}
+            >
+              x
+            </button>
             <h2>add ur lemonade</h2>
             <form onSubmit={handleSubmit}>
               <label>
