@@ -452,7 +452,7 @@ td.empty {
   display: none;
 }
 
-/* ——— Mobile ——— */
+/* --- Mobile --- */
 @media (max-width: 600px) {
   main {
     padding: 12px 8px;

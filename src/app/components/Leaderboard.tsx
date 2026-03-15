@@ -147,7 +147,7 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
     <>
       <header>
         <h1>
-          🍋 lemolist — rank ur lemonade!
+          🍋&ensp;lemolist - rank ur lemonade!
           <span className="header-links">
             <button className="link-btn desktop-only" onClick={() => setShowRules(true)}>rules</button>
             <button className="link-btn link-btn-red desktop-only" onClick={() => setShowAddModal(true)}>add your lemonade</button>
