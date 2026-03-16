@@ -19,7 +19,7 @@ How we test this project and how to add tests for new features.
 
 - **Zod schemas** — validation rules, edge cases
 - **Pure functions** — e.g. `isAllowedImageUrl` in `src/lib/image-url.ts`
-- **Server actions** — mock `createLemonade`, test validation and error paths
+- **Server actions** — mock `createLemonade`, test validation and error paths; admin actions (`deleteLemonade`, `editLemonade`, `logoutAdmin`) in `tests/unit/admin-actions.test.ts`
 
 ### Conventions
 
@@ -58,8 +58,14 @@ E2E files run in **alphabetical order**. Numbered prefixes enforce the right seq
 
 - `01-smoke.spec.ts` — runs first (page load, empty state)
 - `02-add-lemonade.spec.ts` — runs second (adds data to DB)
+- `03-login.spec.ts` — login page, invalid credentials, login with test admin and see logout
+- `04-admin-delete-edit.spec.ts` — admin edit then delete (depends on 02 for row data)
 
 **Why:** The empty-state test expects no entries. If add-lemonade ran first, it would pollute the DB and the empty-state test would fail.
+
+### Admin E2E
+
+Admin tests (03, 04) need an authenticated user. When you run `npm run test:e2e`, the script creates a test admin user via the Supabase Auth Admin API after `db reset` (using the local Supabase secret key from `supabase status`). It sets `TEST_ADMIN_EMAIL` and `TEST_ADMIN_PASSWORD` in the environment so Playwright can log in. If the secret key is not available, the admin user is not created and 03/04 tests that require it will skip. For `npm run test:e2e:local`, set these env vars yourself if you want admin tests to run (e.g. create a user in Supabase Studio and export the credentials).
 
 ### Database State
 
