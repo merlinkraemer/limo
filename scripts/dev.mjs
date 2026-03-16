@@ -37,11 +37,11 @@ function loadEnvFile() {
 
 async function checkSupabaseConnection(maxRetries = 30) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   
-  if (!url || !serviceKey) return false;
+  if (!url || !anonKey) return false;
   
-  const supabase = createClient(url, serviceKey, { auth: { persistSession: false } });
+  const supabase = createClient(url, anonKey, { auth: { persistSession: false } });
   
   for (let i = 0; i < maxRetries; i++) {
     try {

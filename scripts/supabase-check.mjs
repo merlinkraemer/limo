@@ -25,14 +25,14 @@ function loadEnvFile() {
 loadEnvFile();
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-if (!url || !serviceKey) {
-  console.error('Missing env vars. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local');
+if (!url || !anonKey) {
+  console.error('Missing env vars. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local');
   process.exit(1);
 }
 
-const supabase = createClient(url, serviceKey, {
+const supabase = createClient(url, anonKey, {
   auth: { persistSession: false },
 });
 
