@@ -42,3 +42,17 @@ export async function addLemonade(data: {
   revalidatePath('/');
   return { success: true };
 }
+
+/** Stub until admin mode implements real edit. LemonadeFormModal calls this in edit mode. */
+export async function editLemonade(_data: {
+  id: string;
+  name: string;
+  description: string;
+  flavorRating: number;
+  sournessRating: number;
+  imageUrl?: string;
+  locationCity?: string;
+  addedBy?: string;
+}): Promise<{ success: true } | { error: string }> {
+  return { error: 'Edit is not available yet.' };
+}
