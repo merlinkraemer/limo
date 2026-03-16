@@ -74,10 +74,10 @@ function waitForSupabase(maxAttempts = 30) {
 
 function getSupabaseEnv(status) {
   const apiUrl = status.API_URL || status.api_url || 'http://127.0.0.1:54321';
-  const anonKey = status.ANON_KEY || status.anon_key || '';
+  const publishableKey = status.PUBLISHABLE_KEY || status.publishable_key || status.ANON_KEY || status.anon_key || '';
   return {
     NEXT_PUBLIC_SUPABASE_URL: apiUrl,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: publishableKey,
   };
 }
 
