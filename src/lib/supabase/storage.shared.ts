@@ -30,3 +30,22 @@ export function getStorageBucketCandidates(configuredBucket?: string) {
     ),
   ];
 }
+
+const PUBLIC_PREFIX = '/storage/v1/object/public/';
+
+/**
+ * Parse bucket id and object path from a Supabase storage public URL.
+ * Returns null if the URL is not a valid storage public URL.
+ */
+export function parseStoragePublicUrl(
+  url: string,
+  baseUrl?: string
+): { bucket: string; path: string } | null {
+  const base = (baseUrl ?? process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? '').replace(/\/$/, '');
+  const prefix = `${base}${PUBLIC_PREFIX}`;
+  if (!url.startsWith(prefix)) return null;
+  const after = url.slice(prefix.length);
+  const firstSlash = after.indexOf('/');
+  if (firstSlash === -1) return null;
+  return { bucket: after.slice(0, firstSlash), path: after.slice(firstSlash + 1) };
+}

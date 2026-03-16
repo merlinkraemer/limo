@@ -408,6 +408,110 @@ td.empty {
   margin-top: 8px;
 }
 
+.login-page {
+  max-width: 360px;
+  margin-top: 48px;
+}
+
+.login-page h1 {
+  margin-bottom: 20px;
+  border-bottom: 1px solid #d4a0a0;
+  padding-bottom: 10px;
+}
+
+.login-page form label {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.login-page form input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px;
+  font-family: Verdana, Geneva, sans-serif;
+}
+
+.login-back {
+  margin-top: 20px;
+  font-size: 13px;
+}
+
+.cell-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.admin-entry-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.admin-menu-trigger {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  font-size: 16px;
+  line-height: 1;
+  color: #666;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.admin-menu-trigger:hover {
+  color: #333;
+}
+
+.admin-menu-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 2px;
+  background: #fff;
+  border: 1px solid #d4a0a0;
+  border-radius: 2px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 100px;
+  z-index: 10;
+}
+
+.admin-menu-dropdown-portal {
+  position: fixed;
+  right: auto;
+  width: 100px;
+  min-width: 100px;
+  z-index: 1000;
+  margin-top: 0;
+}
+
+.admin-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  font-family: Verdana, Geneva, sans-serif;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.admin-menu-item:hover {
+  background: #fae8e8;
+}
+
+.admin-menu-item-danger {
+  color: #993333;
+}
+
+.admin-menu-item-danger:hover {
+  background: #f5d5d5;
+}
+
 .hover-preview {
   position: fixed;
   pointer-events: none;
@@ -450,6 +554,10 @@ td.empty {
 
 .footer-divider {
   color: rgba(153, 51, 51, 0.4);
+}
+
+.footer-inline-form {
+  display: inline;
 }
 
 .footer-rules-link {

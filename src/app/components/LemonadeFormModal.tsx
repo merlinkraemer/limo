@@ -86,7 +86,12 @@ export function LemonadeFormModal({
       };
 
       const result = isEdit && initialData
-        ? await editLemonade({ id: initialData.id, ...payload })
+        ? await editLemonade({
+            id: initialData.id,
+            ...payload,
+            oldImageUrl: initialData.image_url ?? undefined,
+            imageRemoved,
+          })
         : await addLemonade(payload);
 
       if ('error' in result) {
