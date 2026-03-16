@@ -1,0 +1,36 @@
+name: db-migrate
+
+on:
+  push:
+    branches: [main, staging]
+    paths:
+      - 'supabase/migrations/**'
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      
+      - name: Link and migrate staging
+        if: github.ref == 'refs/heads/staging'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STAGING_DB_PASSWORD }}
+        run: |
+          supabase link --project-ref xduxzpriixkxrygulgon -p "$SUPABASE_DB_PASSWORD"
+          supabase db push --linked
+      
+      - name: Link and migrate production
+        if: github.ref == 'refs/heads/main'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+        run: |
+          supabase link --project-ref mpbpzxkttsqmsaazxbkk -p "$SUPABASE_DB_PASSWORD"
+          supabase db push --linked

@@ -43,4 +43,5 @@ scripts
 
 docs
 - `docs/TESTING.md` — testing strategy, conventions, troubleshooting
+- `docs/DEPLOYMENT.md` — staging/prod workflow
 - `docs/planning/` — roadmap, status, workflow
