@@ -61,6 +61,22 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
     return () => { document.body.style.overflow = ''; };
   }, [modalOpen]);
 
+  useEffect(() => {
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        if (showAddModal && !submitting && !uploading) {
+          setShowAddModal(false);
+          setFileName(null);
+        }
+        if (showRules) {
+          setShowRules(false);
+        }
+      }
+    }
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showAddModal, showRules, submitting, uploading]);
+
   const rankMap = new Map<string, number>();
   [...initialData]
     .sort((a, b) => b.overall_score - a.overall_score || new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
