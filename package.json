@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/dev.mjs",
+    "dev": "infisical run --env=dev -- node scripts/dev.mjs",
     "dev:next": "next dev",
     "check": "node scripts/check.mjs",
     "build": "next build",

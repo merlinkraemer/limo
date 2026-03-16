@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 import { spawn, execSync } from 'child_process';
 import { createClient } from '@supabase/supabase-js';
-import fs from 'fs';
-import path from 'path';
 
 const GREEN = '\x1b[32m';
 const YELLOW = '\x1b[33m';
@@ -12,27 +10,6 @@ const RESET = '\x1b[0m';
 
 function log(msg, color = RESET) {
   console.log(`${color}${msg}${RESET}`);
-}
-
-function loadEnvFile() {
-  const envPath = path.resolve(process.cwd(), '.env.local');
-  if (!fs.existsSync(envPath)) return false;
-  const content = fs.readFileSync(envPath, 'utf8');
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eq = trimmed.indexOf('=');
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    if (!process.env[key]) {
-      process.env[key] = value;
-    }
-  }
-  return true;
 }
 
 async function checkSupabaseConnection(maxRetries = 30) {
@@ -82,19 +59,11 @@ function openBrowser(url) {
 async function main() {
   log('\n🚀 Limo Dev Environment\n', CYAN);
   
-  // Load env
-  if (!loadEnvFile()) {
-    log('❌ No .env.local found. Run "supabase start" first to get credentials.', RED);
-    process.exit(1);
-  }
-  
   // Check/start Supabase
   if (!isSupabaseRunning()) {
     if (!startSupabase()) {
       process.exit(1);
     }
-    // Reload env after Supabase start
-    loadEnvFile();
   } else {
     log('✅ Supabase already running', GREEN);
   }
