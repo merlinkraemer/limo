@@ -99,7 +99,10 @@ export async function editLemonade(data: {
   }
 
   try {
-    if (data.oldImageUrl && (data.imageRemoved || data.imageUrl)) {
+    const oldImageShouldBeDeleted =
+      data.oldImageUrl &&
+      (data.imageRemoved || (data.imageUrl && data.imageUrl !== data.oldImageUrl));
+    if (oldImageShouldBeDeleted && data.oldImageUrl) {
       await deleteStorageImage(data.oldImageUrl);
     }
     await updateLemonade(data.id, {
