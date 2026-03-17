@@ -1,10 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { Lemonade } from '@/types/lemonade';
 import { LoadingImg } from './LoadingImg';
 import { Modal } from './Modal';
 import { LemonadeFormModal } from './LemonadeFormModal';
+import { AdminEntryMenu } from './AdminEntryMenu';
+import { logoutAdmin } from '../actions';
 
 type SortKey = 'rank' | 'overall_score' | 'flavor_rating' | 'sourness_rating' | 'created_at' | 'name';
 type SortDir = 'asc' | 'desc';
@@ -22,7 +25,14 @@ function formatDate(dateStr: string) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
-export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
+export function Leaderboard({
+  initialData,
+  isAdmin = false,
+}: {
+  initialData: Lemonade[];
+  isAdmin?: boolean;
+}) {
+  const router = useRouter();
   const isTouch = useIsTouch();
   const [sortKey, setSortKey] = useState<SortKey>('rank');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -73,6 +83,11 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
         <h1>
           🍋&ensp;lemolist - rank ur lemonade!
           <span className="header-links">
+            {isAdmin && (
+              <form action={logoutAdmin}>
+                <button type="submit" className="link-btn desktop-only">logout</button>
+              </form>
+            )}
             <button className="link-btn desktop-only" onClick={() => setShowRules(true)}>rules</button>
             <button className="link-btn link-btn-red desktop-only" onClick={() => setShowAddModal(true)}>add your lemonade</button>
           </span>
@@ -135,7 +150,16 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
                       <td>{entry.overall_score.toFixed(1)} ☆</td>
                       <td>{entry.flavor_rating} ☆</td>
                       <td>{entry.sourness_rating} ☆</td>
-                      <td>{formatDate(entry.created_at)}</td>
+                      <td className="cell-actions">
+                        {formatDate(entry.created_at)}
+                        {isAdmin && (
+                          <AdminEntryMenu
+                            entry={entry}
+                            onDeleted={() => router.refresh()}
+                            onEditClose={() => router.refresh()}
+                          />
+                        )}
+                      </td>
                     </tr>
                     {isExpanded && (
                       <tr className="detail-row">
@@ -198,6 +222,14 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
       <footer className="site-footer">
         help us find the best lemonade ever pls 👉👈
         <span className="footer-divider"> · </span>
+        {isAdmin && (
+          <>
+            <form action={logoutAdmin} className="footer-inline-form">
+              <button type="submit" className="link-btn">logout</button>
+            </form>
+            <span className="footer-divider"> · </span>
+          </>
+        )}
         <button className="link-btn footer-rules-link" onClick={() => setShowRules(true)}>rules</button>
       </footer>
     </>
