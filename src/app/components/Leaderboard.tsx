@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState } from 'react';
 import type { Lemonade } from '@/types/lemonade';
-import { addLemonade } from '../actions';
-import { uploadImage } from '@/lib/supabase/storage';
+import { LoadingImg } from './LoadingImg';
+import { Modal } from './Modal';
+import { LemonadeFormModal } from './LemonadeFormModal';
 
 type SortKey = 'rank' | 'overall_score' | 'flavor_rating' | 'sourness_rating' | 'created_at' | 'name';
 type SortDir = 'asc' | 'desc';
@@ -22,60 +22,15 @@ function formatDate(dateStr: string) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
-function LoadingImg({ src, alt }: { src: string; alt: string }) {
-  const [loaded, setLoaded] = useState(false);
-  return (
-    <>
-      {!loaded && <span className="img-loading">loading image...</span>}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={alt}
-        onLoad={() => setLoaded(true)}
-        style={loaded ? undefined : { display: 'none' }}
-      />
-    </>
-  );
-}
-
 export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
-  const router = useRouter();
   const isTouch = useIsTouch();
   const [sortKey, setSortKey] = useState<SortKey>('rank');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [flavorRating, setFlavorRating] = useState(0);
-  const [sournessRating, setSournessRating] = useState(0);
   const [hoverEntry, setHoverEntry] = useState<Lemonade | null>(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
-  const [fileName, setFileName] = useState<string | null>(null);
-
-  const modalOpen = showAddModal || showRules;
-  useEffect(() => {
-    document.body.style.overflow = modalOpen ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [modalOpen]);
-
-  useEffect(() => {
-    function handleEsc(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        if (showAddModal && !submitting && !uploading) {
-          setShowAddModal(false);
-          setFileName(null);
-        }
-        if (showRules) {
-          setShowRules(false);
-        }
-      }
-    }
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [showAddModal, showRules, submitting, uploading]);
 
   const rankMap = new Map<string, number>();
   [...initialData]
@@ -110,68 +65,6 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
   function sortIndicator(key: SortKey) {
     if (sortKey !== key) return <span className="sort-arrow hidden"> ▲</span>;
     return <span className="sort-arrow">{sortDir === 'asc' ? ' ▲' : ' ▼'}</span>;
-  }
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
-
-    if (flavorRating === 0 || sournessRating === 0) {
-      setError('please rate both flavor and sourness');
-      return;
-    }
-
-    const form = e.currentTarget;
-    const formData = new FormData(form);
-    const fileInput = form.querySelector<HTMLInputElement>('input[type="file"]');
-    const file = fileInput?.files?.[0];
-
-    if (file && file.size > 5 * 1024 * 1024) {
-      setError('image is too large - max 5MB');
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      let imageUrl: string | undefined;
-      if (file) {
-        setUploading(true);
-        try {
-          imageUrl = await uploadImage(file);
-        } catch {
-          setError('failed to upload image - please try again');
-          setUploading(false);
-          setSubmitting(false);
-          return;
-        }
-        setUploading(false);
-      }
-
-      const result = await addLemonade({
-        name: formData.get('name') as string,
-        description: formData.get('description') as string,
-        flavorRating,
-        sournessRating,
-        imageUrl,
-        locationCity: (formData.get('locationCity') as string) || undefined,
-        addedBy: (formData.get('addedBy') as string) || undefined,
-      });
-
-      if ('error' in result) {
-        setError(result.error);
-      } else {
-        setShowAddModal(false);
-        setFlavorRating(0);
-        setSournessRating(0);
-        setFileName(null);
-        router.refresh();
-      }
-    } catch {
-      setError('something went wrong - please try again');
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   return (
@@ -287,111 +180,18 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
       )}
 
       {showAddModal && (
-        <div
-          className="modal-overlay"
-          onClick={() => {
-            if (!submitting && !uploading) {
-              setShowAddModal(false);
-              setFileName(null);
-            }
-          }}
-        >
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button
-              className="modal-close"
-              onClick={() => {
-                if (!submitting && !uploading) {
-                  setShowAddModal(false);
-                  setFileName(null);
-                }
-              }}
-            >
-              x
-            </button>
-            <h2>add ur lemonade</h2>
-            <form onSubmit={handleSubmit}>
-              <label>
-                lemonade name *
-                <input type="text" name="name" required minLength={2} maxLength={100} placeholder="e.g. San Pellegrino Limonata" />
-              </label>
-              <label>
-                description
-                <textarea name="description" maxLength={500} rows={2} placeholder="special flavor? Tastes like bubblegum?? type whatever here" />
-              </label>
-              <div className="rating-row">
-                <label>
-                  flavor *
-                  <div className="star-rating">
-                    {Array.from({ length: 10 }, (_, i) => (
-                      <span
-                        key={i}
-                        className={i < flavorRating ? 'star filled' : 'star'}
-                        onClick={() => setFlavorRating(i + 1)}
-                      >
-                        {i < flavorRating ? '★' : '☆'}
-                      </span>
-                    ))}
-                    {flavorRating > 0 && <span className="star-count">{flavorRating}/10</span>}
-                  </div>
-                </label>
-                <label>
-                  sourness *
-                  <div className="star-rating">
-                    {Array.from({ length: 10 }, (_, i) => (
-                      <span
-                        key={i}
-                        className={i < sournessRating ? 'star filled' : 'star'}
-                        onClick={() => setSournessRating(i + 1)}
-                      >
-                        {i < sournessRating ? '★' : '☆'}
-                      </span>
-                    ))}
-                    {sournessRating > 0 && <span className="star-count">{sournessRating}/10</span>}
-                  </div>
-                </label>
-              </div>
-              <div className="file-upload">
-                <input
-                  type="file"
-                  name="image"
-                  accept="image/*"
-                  id="image-input"
-                  className="file-input-hidden"
-                  onChange={e => setFileName(e.target.files?.[0]?.name ?? null)}
-                />
-                <label htmlFor="image-input" className={`file-upload-btn${uploading ? ' uploading' : ''}`}>
-                  {uploading ? <span>uploading<span className="dots" /></span> : fileName ? fileName : '+ add photo'}
-                </label>
-              </div>
-              <div className="form-row">
-                <label>
-                  city
-                  <input type="text" name="locationCity" maxLength={100} />
-                </label>
-                <label>
-                  your name
-                  <input type="text" name="addedBy" maxLength={100} />
-                </label>
-              </div>
-              {error && <p className="error">{error}</p>}
-              <button type="submit" className="submit-btn" disabled={submitting || uploading}>
-                {uploading ? <span>uploading image<span className="dots" /></span> : submitting ? <span>submitting<span className="dots" /></span> : 'add lemonade'}
-              </button>
-            </form>
-          </div>
-        </div>
+        <LemonadeFormModal
+          mode="create"
+          onClose={() => setShowAddModal(false)}
+          onSuccess={() => setShowAddModal(false)}
+        />
       )}
 
-      {showRules && (
-        <div className="modal-overlay" onClick={() => setShowRules(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setShowRules(false)}>x</button>
-            <h2>rules</h2>
-            <p>1. only canned lemonades accepted</p>
-            <p>2. lemonades can be any sort of non-alcoholic soda type beverage</p>
-          </div>
-        </div>
-      )}
+      <Modal open={showRules} onClose={() => setShowRules(false)}>
+        <h2>rules</h2>
+        <p>1. only canned lemonades accepted</p>
+        <p>2. lemonades can be any sort of non-alcoholic soda type beverage</p>
+      </Modal>
 
       <button className="fab mobile-only" onClick={() => setShowAddModal(true)} aria-label="Add lemonade" />
 

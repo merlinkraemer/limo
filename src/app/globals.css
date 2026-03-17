@@ -364,6 +364,17 @@ td.empty {
   min-width: 0;
 }
 
+.edit-image-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.edit-image-row .detail-image {
+  flex-shrink: 0;
+  width: 120px;
+}
+
 .submit-btn {
   display: block;
   width: 100%;
