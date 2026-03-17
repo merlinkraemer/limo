@@ -15,8 +15,7 @@ To set up the database:
 2. **Configure Environment Variables**
    - Copy environment variables from `.env.local` to actual Supabase values:
      - `NEXT_PUBLIC_SUPABASE_URL`: Project Settings → API → Project URL
-     - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Project Settings → API → anon/public key
-     - `SUPABASE_SERVICE_ROLE_KEY`: Project Settings → API → service_role secret key (keep this secret!)
+     - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: Project Settings → API Keys → Publishable key
    - Update `.env.local` with the real values
 
 3. **Run Database Migration**

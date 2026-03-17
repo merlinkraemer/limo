@@ -1,11 +1,11 @@
-import { createServiceClient } from '@/lib/supabase/service';
+import { createClient } from '@/lib/supabase/server';
 import { CreateLemonadeInput, Lemonade } from '@/types/lemonade';
 
 /**
  * Create a new lemonade entry in the database
  */
 export async function createLemonade(data: CreateLemonadeInput): Promise<Lemonade> {
-  const supabase = createServiceClient();
+  const supabase = await createClient();
 
   const dbData = {
     name: data.name,
@@ -34,7 +34,7 @@ export async function createLemonade(data: CreateLemonadeInput): Promise<Lemonad
  * Get all lemonades ordered by score
  */
 export async function getAllLemonades(): Promise<Lemonade[]> {
-  const supabase = createServiceClient();
+  const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('lemonades')

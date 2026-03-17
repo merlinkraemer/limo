@@ -1,21 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/service';
+import { createClient } from '@/lib/supabase/server';
 import {
-  DEFAULT_STORAGE_BUCKET,
   getFileExtension,
   getStorageBucketCandidates,
   isBucketNotFoundError,
 } from '@/lib/supabase/storage.shared';
-
-async function ensureBucketExists(bucket: string) {
-  const supabase = createServiceClient();
-  const { error } = await supabase.storage.createBucket(bucket, { public: true });
-
-  if (error && !/already exists/i.test(error.message)) {
-    throw error;
-  }
-}
 
 export async function POST(request: Request) {
   try {
@@ -26,7 +16,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing upload file.' }, { status: 400 });
     }
 
-    const supabase = createServiceClient();
+    const supabase = await createClient();
     const fileExt = getFileExtension(file);
     const filePath = `uploads/${randomUUID()}.${fileExt}`;
     const configuredBucket =
@@ -35,20 +25,10 @@ export async function POST(request: Request) {
     const bucketCandidates = getStorageBucketCandidates(configuredBucket);
 
     for (const bucket of bucketCandidates) {
-      let { error } = await supabase.storage.from(bucket).upload(filePath, file, {
+      const { error } = await supabase.storage.from(bucket).upload(filePath, file, {
         cacheControl: '3600',
         upsert: false,
       });
-
-      if (error && isBucketNotFoundError(error) && bucket === DEFAULT_STORAGE_BUCKET) {
-        await ensureBucketExists(bucket);
-
-        const retry = await supabase.storage.from(bucket).upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-        error = retry.error;
-      }
 
       if (error) {
         if (isBucketNotFoundError(error)) {
