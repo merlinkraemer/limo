@@ -7,7 +7,7 @@ npm run dev      # Starts Supabase + Next.js, opens browser
 npm run check    # Lint, typecheck, tests, build with summary
 ```
 
-First time: `npm install`, then `supabase start` and copy credentials to `.env.local`.
+First time: `npm install`, then `infisical login` and `supabase start`. Secrets are injected via Infisical — no `.env.local` needed.
 
 stack
 
