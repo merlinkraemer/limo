@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Lemonade } from '@/types/lemonade';
+import { formatWhatsApp } from '@/app/utils/whatsapp-format';
 import { addLemonade } from '../actions';
 import { uploadImage } from '@/lib/supabase/storage';
 
@@ -254,7 +255,7 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
                               </div>
                             )}
                             <div className="detail-info">
-                              {entry.description && <p className="detail-description">{entry.description}</p>}
+                              {entry.description && <p className="detail-description">{formatWhatsApp(entry.description)}</p>}
                               <div className="detail-scores">
                                 <span>flavor: {entry.flavor_rating}/10</span>
                                 <span>sourness: {entry.sourness_rating}/10</span>
