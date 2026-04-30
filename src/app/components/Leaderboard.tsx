@@ -330,16 +330,16 @@ export function Leaderboard({ initialData }: { initialData: Lemonade[] }) {
                 lemonade name *
                 <input type="text" name="name" required minLength={2} maxLength={100} placeholder="e.g. San Pellegrino Limonata" />
               </label>
-              <label>
-                description
+              <div className="description-field">
+                <label htmlFor="lemonade-description">description</label>
                 <div className="format-toolbar" role="toolbar" aria-label="Text formatting">
                   <button type="button" className="format-btn" onClick={() => wrapDescription('**')} title="Bold" aria-label="Bold"><strong>B</strong></button>
                   <button type="button" className="format-btn" onClick={() => wrapDescription('*')} title="Italic" aria-label="Italic"><em>I</em></button>
                   <button type="button" className="format-btn" onClick={() => wrapDescription('~~')} title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
                   <button type="button" className="format-btn" onClick={() => wrapDescription('`')} title="Code" aria-label="Code"><code>{'<>'}</code></button>
                 </div>
-                <textarea ref={descriptionRef} name="description" maxLength={500} rows={2} placeholder="select text and tap B / I / S / <> to format" />
-              </label>
+                <textarea id="lemonade-description" ref={descriptionRef} name="description" maxLength={500} rows={2} placeholder="select text and tap B / I / S / <> to format" />
+              </div>
               <div className="rating-row">
                 <label>
                   flavor *

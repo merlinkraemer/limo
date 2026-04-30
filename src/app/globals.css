@@ -321,6 +321,16 @@ td.empty {
   resize: vertical;
 }
 
+.description-field {
+  margin-bottom: 12px;
+}
+
+.description-field > label {
+  display: block;
+  color: #888;
+  font-size: 12px;
+}
+
 .format-toolbar {
   display: flex;
   gap: 4px;
