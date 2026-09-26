@@ -7,6 +7,7 @@ How we test this project and how to add tests for new features.
 | Layer | Tool | Location | Purpose |
 |-------|------|----------|---------|
 | Unit | Vitest | `tests/unit/**/*.test.ts` | Pure logic, schemas, server actions (mocked) |
+| Database | bash + `psql` | `scripts/test-db.sh`, `tests/db/*.sql` | Migration idempotence, backfill/merge, RLS, RPC validation |
 | E2E | Playwright | `tests/e2e/**/*.spec.ts` | Full user flows against real app + DB |
 
 ## Unit Tests (Vitest)
@@ -44,6 +45,17 @@ describe('addLemonade', () => {
   });
 });
 ```
+
+## Database Harness
+
+- **Run:** `npm run test:db` (requires `supabase start` and `psql`)
+- **What it does:** applies migrations `007`/`008`/`009` three times over
+  production-like fixtures (`tests/db/phase_a_fixtures.sql`) and asserts historical
+  backfill, the Twister merge guard, nullable legacy metrics, RPC validation/anti-abuse,
+  first-photo-wins, vote aggregates, the anon write/read lockdown, and the legacy Storage
+  write lockdown from `009`. Idempotent and safe to re-run.
+- **State:** inserts fixture rows (including the Twister pair); run `supabase db reset`
+  afterwards if you need a pristine local database.
 
 ## E2E Tests (Playwright)
 
@@ -83,6 +95,8 @@ E2E files run in **alphabetical order**. Numbered prefixes enforce the right seq
 `.github/workflows/ci.yml`:
 
 1. **quality** — lint, typecheck, unit tests, build
-2. **e2e** — runs after quality; uses `supabase/setup-cli`, installs Playwright Chromium, runs `npm run test:e2e`
+2. **db** — runs after quality; starts local Supabase, resets it, then runs `npm run test:db`
+   (migration/idempotence/RLS/RPC/Storage-lockdown harness)
+3. **e2e** — runs after quality; uses `supabase/setup-cli`, installs Playwright Chromium, runs `npm run test:e2e`
 
-E2E uses local Supabase (`supabase start` + `db reset`). No staging project or secrets required.
+E2E and DB jobs use local Supabase (`supabase start` + `db reset`). No staging project or secrets required.
