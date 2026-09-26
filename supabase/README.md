@@ -30,7 +30,7 @@ Useful local commands:
 
 | Command | Effect |
 |---------|--------|
-| `npm run test:db` | Apply `007`/`008` repeatedly over production-like fixtures and assert backfill, merge, RPC, RLS, photo and vote behavior (requires `supabase start` + `psql`) |
+| `npm run test:db` | Apply `007`–`009` repeatedly over production-like fixtures and assert backfill, merge, RPC, RLS, photo and vote behavior (requires `supabase start` + `psql`) |
 | `supabase status` | Show local URLs/keys and whether the stack is running |
 | `supabase db reset` | Recreate the local database from all migrations, then load `supabase/seed.sql` |
 | `supabase db reset --no-seed` | Same without seed data (used by `npm run test:e2e`) |
@@ -65,7 +65,7 @@ Apply every file in `supabase/migrations/` in filename order. The files are cumu
 
 > **Numbering:** `005` and `006` are reserved by the admin/RLS line on the `dev` branch
 > (`005_admin_update_delete_policies.sql`, `006_authenticated_storage_delete.sql`). The
-> redesign migrations were numbered `007`/`008` so version prefixes stay unique when the
+> redesign migrations were numbered `007`–`009` so version prefixes stay unique when the
 > lines merge. Never reuse `005`/`006` for different content.
 
 - **Recommended (CLI):** `supabase login`, `supabase link --project-ref YOUR_PROJECT_ID`,
@@ -94,9 +94,10 @@ Migration files are append-only: never edit an applied migration, add a new one 
   unique per `(listing, browser)`; repeat ratings replace the previous one.
 - **Read model.** `listing_summaries` is one row per canonical listing with truthful
   aggregates: `legacy_score`, `visitor_avg_score`, combined `avg_score`, rating counts,
-  and per-trait averages/counts. Score display always names its source; a listing with a
-  single visitor rating shows count 1 and is explicitly provisional — the app never
-  fabricates crowd data.
+  and per-trait averages/counts. The detail sheet names the score source (legacy,
+  provisional, or community); the leaderboard row shows the aggregate number only, and a
+  listing with a single visitor rating shows count 1 and is explicitly provisional — the
+  app never fabricates crowd data.
 - **Duplicate merges.** `lemonades.merged_into` (self-FK) plus `merge_reason` alias a
   duplicate to the canonical row instead of deleting it. The Twister duplicate is merged
   into the photo-bearing row and keeps `source = 'legacy'` ratings out of the loser. The
@@ -143,7 +144,10 @@ Migration files are append-only: never edit an applied migration, add a new one 
 
 These instructions describe the repository migrations. Whether a particular hosted
 project matches them depends on which migrations have been applied there; nothing here
-asserts the state of the production project.
+asserts the state of the production project. Current state: migrations `007`–`009` are
+committed and pushed to `origin/staging`, but the staging migration workflow run failed
+before applying anything (empty `SUPABASE_ACCESS_TOKEN`), and production has not been
+migrated by this work — see [../docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md).
 
 ## Image storage (legacy bucket)
 

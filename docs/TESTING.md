@@ -20,7 +20,7 @@ How we test this project and how to add tests for new features.
 
 - **Zod schemas** — validation rules, edge cases
 - **Pure functions** — e.g. `isAllowedImageUrl` in `src/lib/image-url.ts`
-- **Server actions** — mock `createLemonade`, test validation and error paths
+- **Server actions** — mock the data layer (`@/services/listing-service`), test validation and error paths
 
 ### Conventions
 
@@ -34,7 +34,7 @@ How we test this project and how to add tests for new features.
 // tests/unit/my-module.test.ts
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/services/lemonade-service');
+vi.mock('@/services/listing-service');
 
 import { addLemonade } from '@/app/actions';
 
@@ -68,10 +68,12 @@ describe('addLemonade', () => {
 
 E2E files run in **alphabetical order**. Numbered prefixes enforce the right sequence:
 
-- `01-smoke.spec.ts` — runs first (page load, empty state)
+- `01-smoke.spec.ts` — runs first (page load and add-sheet dialog)
 - `02-add-lemonade.spec.ts` — runs second (adds data to DB)
 
-**Why:** The empty-state test expects no entries. If add-lemonade ran first, it would pollute the DB and the empty-state test would fail.
+**Why:** the numbered prefixes keep the sequence deterministic, and tests that add data
+run after the smoke checks. `npm run test:e2e` resets the DB first; `test:e2e:local` does
+not, so don't assume an empty database in either case.
 
 ### Database State
 
@@ -82,7 +84,7 @@ E2E files run in **alphabetical order**. Numbered prefixes enforce the right seq
 
 - Use `getByRole` and `getByLabel` over raw CSS when possible
 - For table cells that may appear multiple times, use `.first()` to avoid strict-mode violations
-- **Overall score formula:** `flavor * 0.65 + sourness * 0.35` (see migration 003). E2E assertions must use the correct value (e.g. flavor 7 + sourness 5 → 6.3, not 6.0)
+- **Scores:** visitor ratings are a single integer 1–10 with optional 0–3 traits; legacy rows convert the historical score as `flavor * 0.65 + sourness * 0.35` (migration `007`). New ratings do not use the old two-axis form, so E2E tests pick a star value (e.g. "7 out of 10 stars") and assert the saved state rather than a computed weighted score
 
 ### Adding a New E2E Test
 

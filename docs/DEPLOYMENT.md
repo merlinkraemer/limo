@@ -12,14 +12,14 @@ together with [supabase/README.md](../supabase/README.md) (migration semantics) 
 | Staging | `staging` | `xduxzpriixkxrygulgon` (`limo-staging`) | Vercel project `limo`; preview/staging deploy |
 | Integration line | `dev` | — | Admin/auth work; owns migrations `005`/`006` (`dev`'s `db-migrate.yml`) |
 
-The redesign migrations are `007`/`008` (after `004`) precisely because `005`/`006` are
+The redesign migrations are `007`–`009` (after `004`) precisely because `005`/`006` are
 taken by the `dev` line. Between them the versions have a gap, which is fine: Supabase
 tracks applied versions, not a contiguous sequence. Never renumber an applied migration.
 
-**Merging the `dev` line later:** once `007`/`008` are applied to a project, `dev`'s
+**Merging the `dev` line later:** once `007`–`009` are applied to a project, `dev`'s
 `005`/`006` sit below the remote's latest applied version. A plain `supabase db push` will
 refuse to apply them out of order. Reconcile on staging first — either renumber `dev`'s
-unapplied admin migrations above `008` (preferred, keeps versions monotonic) or use
+unapplied admin migrations above `009` (preferred, keeps versions monotonic) or use
 `supabase db push --include-all` deliberately — and verify
 `supabase migration list --linked` before touching production.
 
@@ -70,6 +70,11 @@ worse, the migration can land half-way through a deploy). There is no ordering g
 between the two systems.
 
 **Rule: a commit that changes `supabase/migrations/**` contains nothing else.**
+
+Note: the already-pushed migration-only commit `b91fb0e` also carries
+`.github/workflows/db-migrate-staging.yml`. That is workflow config rather than app code,
+but it still deviates from this rule — keep new migration commits migration-only so a
+schema push never races an app deploy.
 
 Push sequence for any schema change (staging shown; production requires the same ordering
 plus explicit approval):
@@ -122,23 +127,30 @@ separately approved production workflow rather than double-applying.
 
 ## Rollout status and blockers (staging)
 
-- `limo-staging` was restored (ACTIVE_HEALTHY) and `.github/workflows/db-migrate-staging.yml`
-  is part of this branch (commit it before pushing `staging`); after that a plain staging
-  push runs migrations without a manual step.
-- The local CLI cannot run `supabase migration list --linked` without
-  `SUPABASE_DB_PASSWORD`; supply the staging password from a secret manager (GitHub
-  secret or prompt), never paste it into a tracked file or shell history.
-- Staging's current migration history has not been verified without that password. The
-  workflow prints `supabase migration list --linked` and runs `db push --dry-run` before
-  applying anything, so a history mismatch (e.g. staging already has `dev`'s `005`/`006`
-  while this branch does not) fails the run instead of pushing. If that happens, bring the
-  `dev` migration files into the local tree under the merge rule above, re-run the dry
-  run, and only then apply.
+- `origin/staging` HEAD is `b91fb0e`, which already contains migrations `007`–`009` and
+  `.github/workflows/db-migrate-staging.yml`.
+- The push triggered `db-migrate-staging` run
+  [36246209060](https://github.com/merlinkraemer/limo/actions/runs/36246209060), which
+  **failed** in "Link staging project" because `SUPABASE_ACCESS_TOKEN` was empty. The job
+  aborts before `supabase db push`, so migrations `007`–`009` are not confirmed applied to
+  `limo-staging`.
+- Unblocking needs the `SUPABASE_ACCESS_TOKEN` repository secret (plus
+  `SUPABASE_STAGING_DB_PASSWORD` for the link step). Once set, the workflow prints
+  `supabase migration list --linked` and runs `db push --dry-run` before applying
+  anything, so a history mismatch (e.g. staging has `dev`'s `005`/`006` while this branch
+  does not) fails the run instead of pushing. If that happens, bring the `dev` migration
+  files into the local tree under the merge rule above, re-run the dry run, and only then
+  apply.
+- The redesign app commit `9471805` is not an ancestor of `origin/staging`; it sits on
+  local `feat/cloudinary-uploads` (`origin/feat/cloudinary-uploads` is 3 commits behind).
+  Do not push app code to staging until the migration workflow is green.
+- The local CLI cannot run `supabase migration list --linked` without the staging
+  `SUPABASE_DB_PASSWORD`; supply it from a secret manager, never paste it into a tracked
+  file or shell history.
 - Vercel Git auto-deploy has produced no deployment since 2026-03-30 and no staging
-  branch alias exists. Until that integration is confirmed with a throwaway push,
-  treat auto-deploy as unavailable and use an explicitly authorized Vercel preview
-  deploy after the migration workflow is green. Migration-first ordering applies either
-  way.
+  branch alias exists. Until that integration is confirmed with a throwaway push, treat
+  auto-deploy as unavailable and use an explicitly authorized Vercel preview deploy after
+  the migration workflow is green. Migration-first ordering applies either way.
 - Rotate the staging DB password if it was ever shared outside the secret store, then
   update the `SUPABASE_STAGING_DB_PASSWORD` repository secret.
 
@@ -150,6 +162,11 @@ under separate approval, `npm run check`/`test:e2e` green, and a PR to the prote
 `main` branch. Do not run `supabase db push` against the production project from a
 staging run, and do not put the production ref or password into the staging workflow.
 
+Current state: nothing from this work has been applied to production
+(`mpbpzxkttsqmsaazxbkk`). The redesign app commit is not on `main` and neither workflow
+on `main` pushes migrations, so production still serves the pre-redesign app; the hosted
+migration history is not verified in this repo.
+
 ## Rollback
 
 Migrations are append-only. Roll back by adding a forward migration, not by editing or
@@ -160,5 +177,5 @@ deleting an applied file:
 - The duplicate merge is non-destructive: the loser row still exists with `merged_into`
   pointing at the canonical listing. If a merge must be reversed, clear `merged_into` /
   `merge_reason` and drop the canonical-name index in a reviewed migration.
-- Schema rollback of `007`/`008` (dropping tables/views/RPCs) would break the deployed
+- Schema rollback of `007`–`009` (dropping tables/views/RPCs) would break the deployed
   app; prefer forward fixes.
