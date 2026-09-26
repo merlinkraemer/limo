@@ -1,37 +1,13 @@
 import { createServiceClient } from '@/lib/supabase/service';
-import { CreateLemonadeInput, Lemonade } from '@/types/lemonade';
+import { Lemonade } from '@/types/lemonade';
 
 /**
- * Create a new lemonade entry in the database
- */
-export async function createLemonade(data: CreateLemonadeInput): Promise<Lemonade> {
-  const supabase = createServiceClient();
-
-  const dbData = {
-    name: data.name,
-    description: data.description,
-    flavor_rating: data.flavorRating,
-    sourness_rating: data.sournessRating,
-    image_url: data.imageUrl || null,
-    location_city: data.locationCity || null,
-    added_by: data.addedBy || null,
-  };
-
-  const { data: result, error } = await supabase
-    .from('lemonades')
-    .insert(dbData)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to create limo entry: ${error.message}`);
-  }
-
-  return result;
-}
-
-/**
- * Get all lemonades ordered by score
+ * Legacy read model for the pre-Phase-B leaderboard component.
+ *
+ * New UI code should use `getAllListingSummaries()` / `searchListings()` from
+ * `listing-service.ts`, which expose truthful community aggregates. This
+ * function only returns canonical listings that still carry the old two-axis
+ * metrics, so the legacy component never sees a NULL `overall_score`.
  */
 export async function getAllLemonades(): Promise<Lemonade[]> {
   const supabase = createServiceClient();
@@ -39,6 +15,8 @@ export async function getAllLemonades(): Promise<Lemonade[]> {
   const { data, error } = await supabase
     .from('lemonades')
     .select('*')
+    .is('merged_into', null)
+    .not('overall_score', 'is', null)
     .order('overall_score', { ascending: false })
     .order('created_at', { ascending: true });
 

@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:db": "bash scripts/test-db.sh",
     "test:watch": "vitest",
     "test:e2e": "node scripts/e2e-ci.mjs",
     "test:e2e:local": "playwright test"
@@ -31,6 +32,7 @@
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.39.2",
     "eslint-config-next": "^16.1.4",
+    "supabase": "^2.118.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }
