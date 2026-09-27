@@ -84,40 +84,62 @@ jobs:
             echo "db.${PROD_PROJECT_REF}.supabase.co|5432|postgres|direct-ipv6"
           } | sort -u > candidates.txt
           : > out/connection-test.log
-          host=""; port=""; user=""
-          while IFS='|' read -r h p u label; do
-            [ -n "$h" ] || continue
-            echo "trying ${label}: ${h}:${p}"
-            if PGPASSWORD="$PROD_DB_PASSWORD" PGCONNECT_TIMEOUT=15 \
+          trimmed="$(printf '%s' "$PROD_DB_PASSWORD")"
+          if [ "$trimmed" = "$PROD_DB_PASSWORD" ]; then
+            echo "password_check: no leading/trailing whitespace in the repository secret"
+          else
+            echo "password_check: repository secret differs after stripping leading/trailing whitespace"
+          fi
+          host=""; port=""; user=""; mode=""
+          try_conn() {
+            local h="$1" p="$2" u="$3" label="$4" pw="$5" m="$6"
+            echo "trying ${label} [${m}]: ${h}:${p}"
+            if PGPASSWORD="$pw" PGCONNECT_TIMEOUT=15 \
                  psql -X -w -tA "host=${h} port=${p} dbname=postgres user=${u} sslmode=require connect_timeout=15" \
                  -c 'select 1' >/dev/null 2>>out/connection-test.log; then
-              host="$h"; port="$p"; user="$u"
-              echo "connected via ${label} as ${u}"
-              break
+              host="$h"; port="$p"; user="$u"; mode="$m"
+              return 0
+            fi
+            return 1
+          }
+          while IFS='|' read -r h p u label; do
+            [ -n "$h" ] || continue
+            if try_conn "$h" "$p" "$u" "$label" "$PROD_DB_PASSWORD" raw; then break; fi
+            if [ "$trimmed" != "$PROD_DB_PASSWORD" ]; then
+              if try_conn "$h" "$p" "$u" "$label" "$trimmed" trimmed; then break; fi
             fi
           done < candidates.txt
           if [ -z "$host" ]; then
-            echo "::error::Production DB connection failed on every candidate host (is SUPABASE_PRODUCTION_DB_PASSWORD stale?)."
+            echo "::error::Production DB connection failed on every candidate host (stale SUPABASE_PRODUCTION_DB_PASSWORD or unreachable pooler?)."
             tail -n 20 out/connection-test.log
             exit 1
           fi
+          echo "connected via ${host}:${port} as ${user} (password_mode=${mode})"
           {
             echo "host=${host}"
             echo "port=${port}"
             echo "user=${user}"
+            echo "password_mode=${mode}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Snapshot metadata (read-only SELECTs)
         env:
-          PGPASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+          PROD_DB_PASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
         run: |
           set -euo pipefail
+          if [ "${{ steps.resolve.outputs.password_mode }}" = "trimmed" ]; then
+            PGPASSWORD="$(printf '%s' "$PROD_DB_PASSWORD")"
+          else
+            PGPASSWORD="$PROD_DB_PASSWORD"
+          fi
+          export PGPASSWORD
           CONN="host=${{ steps.resolve.outputs.host }} port=${{ steps.resolve.outputs.port }} dbname=postgres user=${{ steps.resolve.outputs.user }} sslmode=require connect_timeout=15"
           q() { psql "$CONN" -X -w -tA -F'|' -c "$1"; }
           {
             echo "snapshot_started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "git_sha=${GITHUB_SHA}"
             echo "run_id=${GITHUB_RUN_ID}"
+            echo "connection_password_mode=${{ steps.resolve.outputs.password_mode }}"
             echo "server_version=$(q "select current_setting('server_version')")"
             echo "database=$(q 'select current_database()')"
             echo "lemonades_total=$(q 'select count(*) from public.lemonades')"
@@ -133,9 +155,15 @@ jobs:
 
       - name: Full custom-format pg_dump (read-only)
         env:
-          PGPASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+          PROD_DB_PASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
         run: |
           set -euo pipefail
+          if [ "${{ steps.resolve.outputs.password_mode }}" = "trimmed" ]; then
+            PGPASSWORD="$(printf '%s' "$PROD_DB_PASSWORD")"
+          else
+            PGPASSWORD="$PROD_DB_PASSWORD"
+          fi
+          export PGPASSWORD
           CONN="host=${{ steps.resolve.outputs.host }} port=${{ steps.resolve.outputs.port }} dbname=postgres user=${{ steps.resolve.outputs.user }} sslmode=require connect_timeout=15"
           started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           /usr/lib/postgresql/17/bin/pg_dump "$CONN" \
