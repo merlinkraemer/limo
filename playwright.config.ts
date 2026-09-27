@@ -11,6 +11,10 @@ export default defineConfig({
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
     trace: 'on-first-retry',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: /mobile/ },
+    // Mobile viewport + touch regressions (add drawer, game follow-up layout).
+    { name: 'mobile-chrome', use: { ...devices['Pixel 7'] }, testMatch: /mobile/ },
+  ],
   timeout: 15000,
 });

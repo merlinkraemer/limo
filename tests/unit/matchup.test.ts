@@ -172,7 +172,7 @@ describe('revealFor', () => {
     expect(winner.label).toBe('higher score');
     expect(winner.percent).toBeNull();
     expect(winner.label).not.toMatch(/crowd vote/i);
-    expect(winner.note).toBe('you picked this — by score');
+    expect(winner.note).toBe('your pick');
 
     const loser = revealFor(outcome, 'a');
     expect(loser.className).toBe('lose');

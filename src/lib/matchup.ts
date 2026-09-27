@@ -252,7 +252,7 @@ export function revealFor(outcome: RoundOutcome, listingId: string): RevealView 
       outcome.result === 'tied'
         ? 'no crowd votes yet'
         : isPicked
-          ? 'you picked this — by score'
+          ? 'your pick'
           : 'no crowd votes yet',
   };
 }

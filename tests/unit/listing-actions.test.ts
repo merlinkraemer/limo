@@ -35,10 +35,12 @@ import {
   createListingWithFirstRating,
   getAllListingSummaries,
   getBrowserRatings,
+  getMatchupResult,
   searchListings,
   submitListingRating,
 } from '@/services/listing-service';
 import { getBrowserId, getOrCreateBrowserId } from '@/lib/browser-identity';
+import { revalidatePath } from 'next/cache';
 
 const BROWSER_ID = '11111111-2222-4333-8444-555555555555';
 const LISTING_ID = '22222222-2222-4333-8444-555555555555';
@@ -138,13 +140,49 @@ describe('listing actions', () => {
     ).toMatchObject({ ok: false });
 
     vi.mocked(castMatchupVote).mockResolvedValue({ voteId: 'vote-1' });
+    vi.mocked(getMatchupResult).mockResolvedValue({
+      lemonade_a: LISTING_ID,
+      lemonade_b: OTHER_ID,
+      votes_a: 1,
+      votes_b: 0,
+      total_votes: 1,
+      percent_a: 100,
+      percent_b: 0,
+    });
     const result = await castVote({ lemonadeA: LISTING_ID, lemonadeB: OTHER_ID, picked: OTHER_ID });
-    expect(result).toEqual({ ok: true, voteId: 'vote-1' });
+    expect(result).toEqual({
+      ok: true,
+      voteId: 'vote-1',
+      result: {
+        lemonade_a: LISTING_ID,
+        lemonade_b: OTHER_ID,
+        votes_a: 1,
+        votes_b: 0,
+        total_votes: 1,
+        percent_a: 100,
+        percent_b: 0,
+      },
+    });
+    expect(getMatchupResult).toHaveBeenCalledWith(LISTING_ID, OTHER_ID);
     expect(castMatchupVote).toHaveBeenCalledWith({
       lemonadeA: LISTING_ID,
       lemonadeB: OTHER_ID,
       picked: OTHER_ID,
       browserId: BROWSER_ID,
+    });
+    // A matchup vote changes no listing summary, so the home route is not
+    // invalidated (that extra RSC round trip was the latency bug).
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('castVote still reports success when only the aggregate read fails', async () => {
+    vi.mocked(castMatchupVote).mockResolvedValue({ voteId: 'vote-2' });
+    vi.mocked(getMatchupResult).mockRejectedValue(new Error('aggregate down'));
+
+    expect(await castVote({ lemonadeA: LISTING_ID, lemonadeB: OTHER_ID, picked: LISTING_ID })).toEqual({
+      ok: true,
+      voteId: 'vote-2',
+      result: null,
     });
   });
 

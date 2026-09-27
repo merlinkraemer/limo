@@ -42,7 +42,9 @@ export type RateListingActionResult = { ok: true; ratingId: string } | ActionFai
 export type ContributePhotoActionResult =
   | { ok: true; updated: boolean; imageUrl: string | null }
   | ActionFailure;
-export type CastVoteActionResult = { ok: true; voteId: string } | ActionFailure;
+export type CastVoteActionResult =
+  | { ok: true; voteId: string; result: MatchupResult | null }
+  | ActionFailure;
 export type SearchListingsActionResult = { ok: true; results: ListingSearchResult[] } | ActionFailure;
 export type FetchLeaderboardActionResult = { ok: true; listings: ListingSummary[] } | ActionFailure;
 export type FetchMyRatingsActionResult = { ok: true; ratings: BrowserRating[] } | ActionFailure;
@@ -166,8 +168,17 @@ export async function castVote(input: {
       browserId,
     });
 
-    revalidatePath('/');
-    return { ok: true, voteId: result.voteId };
+    // One browser action = one persisted vote + the real post-vote aggregate.
+    // A matchup vote never changes listing_summaries, so there is nothing to
+    // revalidate here (and a full home RSC refresh would only add latency).
+    let matchup: MatchupResult | null = null;
+    try {
+      matchup = await getMatchupResult(parsed.data.lemonadeA, parsed.data.lemonadeB);
+    } catch {
+      matchup = null;
+    }
+
+    return { ok: true, voteId: result.voteId, result: matchup };
   } catch (error) {
     return { ok: false, error: messageOf(error, 'Failed to save vote') };
   }

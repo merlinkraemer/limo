@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -8,13 +8,12 @@ import {
   castVote,
   contributePhoto,
   createListing,
-  fetchMatchupResult,
   fetchMyRatings,
   rateListing,
   searchListingsAction,
 } from '@/app/listing-actions';
 import { uploadImage } from '@/lib/supabase/storage';
-import { assignRanks, ratingLabel } from '@/lib/listing-metrics';
+import { assignRanks, medalFor, ratingLabel } from '@/lib/listing-metrics';
 import {
   GAME_ROUNDS,
   alignmentNote,
@@ -146,7 +145,7 @@ function Thumb({
 }) {
   if (!listing.image_url) return <Placeholder name={listing.name} ratio={ratio} small={small} />;
   return (
-    <Image
+    <LoadableImage
       className="od-media od-media-cover"
       style={{ '--od-ratio': ratio } as CSSProperties}
       src={listing.image_url}
@@ -155,6 +154,74 @@ function Thumb({
       sizes="44px"
       priority={priority}
     />
+  );
+}
+
+/** next/image with a visible skeleton until the bitmap is decoded. A source
+ *  that fails keeps a labelled surface instead of a broken frame. */
+function LoadableImage({ onLoad, onError, ...props }: React.ComponentProps<typeof Image>) {
+  const [state, setState] = useState<'loading' | 'loaded' | 'error'>('loading');
+  return (
+    <>
+      <Image
+        {...props}
+        data-photo-state={state}
+        onLoad={event => {
+          setState('loaded');
+          onLoad?.(event);
+        }}
+        onError={event => {
+          setState('error');
+          onError?.(event);
+        }}
+      />
+      {state !== 'loaded' ? (
+        <span className={`img-skeleton${state === 'error' ? ' is-error' : ''}`} aria-hidden="true">
+          {state === 'error' ? 'photo unavailable' : null}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+/** Respect Data Saver: never warm images when the browser asked us not to. */
+function useSaveData(): boolean {
+  return useSyncExternalStore(
+    () => () => {},
+    () => !!(navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData,
+    () => false
+  );
+}
+
+/**
+ * Bounded prewarm for exactly the next game pair. It renders the same
+ * next/image component with the same `sizes` breakpoints as the live card, so
+ * the browser picks the identical srcset variant; the two images are mounted
+ * offscreen only until the round advances (then the previous warm pair is
+ * replaced, never accumulated).
+ */
+function GameWarmPair({
+  a,
+  b,
+  isDesktop,
+}: {
+  a: ListingSummary | null;
+  b: ListingSummary | null;
+  isDesktop: boolean;
+}) {
+  const saveData = useSaveData();
+  if (saveData || !a || !b) return null;
+  const sources = [a, b].filter(listing => listing.image_url);
+  if (!sources.length) return null;
+  const sizes = isDesktop ? '320px' : '(max-width: 767px) 90vw, 45vw';
+  return (
+    <div className="game-warm" data-warm-pair data-warm-ids={sources.map(listing => listing.id).join(',')} aria-hidden="true">
+      {sources.map(listing => (
+        <span className="game-warm-slot" key={listing.id}>
+          <Image src={listing.image_url!} alt="" fill sizes={sizes} loading="eager" fetchPriority="low" />
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -204,6 +271,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
   const [history, setHistory] = useState<RoundRecord[]>([]);
   const [endOpen, setEndOpen] = useState(false);
   const [voting, setVoting] = useState(false);
+  const [pendingPick, setPendingPick] = useState<string | null>(null);
   const [gameError, setGameError] = useState<string | null>(null);
 
   const { register, unregister } = useLayerStack();
@@ -224,6 +292,9 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
   const pair = roundPairs[round] ?? null;
   const cardA = pair ? (listingById.get(pair.a) ?? null) : null;
   const cardB = pair ? (listingById.get(pair.b) ?? null) : null;
+  const nextPair = roundPairs[round + 1] ?? null;
+  const nextCardA = nextPair ? (listingById.get(nextPair.a) ?? null) : null;
+  const nextCardB = nextPair ? (listingById.get(nextPair.b) ?? null) : null;
   const alignment = useMemo(() => alignmentSummary(history), [history]);
 
   const closeDetail = useCallback(() => setDetailId(null), []);
@@ -466,6 +537,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
     setGameNonce(nonce => nonce + 1);
     setRound(0);
     setPicked(null);
+    setPendingPick(null);
     setOutcome(null);
     setHistory([]);
     setEndOpen(false);
@@ -490,25 +562,30 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
   async function handlePick(listingId: string) {
     if (!pair || picked || voting) return;
     setVoting(true);
+    setPendingPick(listingId);
     setGameError(null);
+    // One action casts the vote and returns the persisted post-vote aggregate.
     const vote = await castVote({ lemonadeA: pair.a, lemonadeB: pair.b, picked: listingId });
     if (!vote.ok) {
       setGameError(vote.error);
       setVoting(false);
+      setPendingPick(null);
       return;
     }
-    const result = await fetchMatchupResult(pair.a, pair.b);
-    if (!result.ok || !result.result) {
-      setGameError(result.ok ? 'could not load this matchup' : result.error);
+    const result = vote.result;
+    if (!result) {
+      setGameError('could not load this matchup');
       setVoting(false);
+      setPendingPick(null);
       return;
     }
     const scoreFor = (id: string) => listingById.get(id)?.avg_score ?? null;
-    const roundOutcome = outcomeFor(result.result, listingId, {
-      a: scoreFor(result.result.lemonade_a),
-      b: scoreFor(result.result.lemonade_b),
+    const roundOutcome = outcomeFor(result, listingId, {
+      a: scoreFor(result.lemonade_a),
+      b: scoreFor(result.lemonade_b),
     });
     setPicked(listingId);
+    setPendingPick(null);
     setOutcome(roundOutcome);
     setHistory(records => [...records, { round, picked: listingId, outcome: roundOutcome }]);
     setVoting(false);
@@ -522,14 +599,13 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
     : '';
 
   function renderLeaderboardRow(listing: ListingSummary, rank: number) {
-    const medal = rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : null;
-    const medalName = ['gold', 'silver', 'bronze'][rank - 1];
+    const medal = medalFor(rank, listing.avg_score);
     return (
       <li key={listing.id}>
         <button className="row" onClick={() => openDetail(listing.id)}>
           {medal ? (
-            <span className="rk medal" role="img" aria-label={`${medalName}, rank ${rank}`}>
-              {medal}
+            <span className="rk medal" role="img" aria-label={`${medal.name}, rank ${rank}`}>
+              {medal.emoji}
             </span>
           ) : (
             <span className="rk">
@@ -585,12 +661,13 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
     const revealed = !!picked && !!outcome;
     const view = revealed ? revealFor(outcome!, listing.id) : null;
     const cardImage = listing.image_url ? (
-      <Image
+      <LoadableImage
         className="od-media"
         src={listing.image_url}
         alt=""
         fill
         sizes={isDesktop ? '320px' : '(max-width: 767px) 90vw, 45vw'}
+        loading={gameOpen ? 'eager' : 'lazy'}
       />
     ) : (
       <Placeholder name={listing.name} ratio="9 / 16" />
@@ -632,9 +709,10 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
         ) : (
           <button
             type="button"
-            className="qc"
+            className={`qc${pendingPick === listing.id ? ' is-pending' : ''}`}
             onClick={() => handlePick(listing.id)}
             disabled={voting || !!picked}
+            aria-busy={pendingPick === listing.id || undefined}
             aria-label={`card ${position === 'left' ? 1 : 2}: ${listing.name}`}
           >
             <span className="qc-in">
@@ -650,6 +728,11 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                 <span className="od-nowrap">submitted by: {listing.added_by || 'anon'}</span>
               </span>
             </span>
+            {pendingPick === listing.id ? (
+              <span className="qc-pending" role="status">
+                picking…
+              </span>
+            ) : null}
           </button>
         )}
         {isMobile ? (
@@ -827,6 +910,9 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
           </div>
           <div />
         </div>
+        {gameOpen || isDesktop ? (
+          <GameWarmPair a={nextCardA} b={nextCardB} isDesktop={isDesktop} />
+        ) : null}
       </div>
 
       {/* ── detail sheet ── */}
@@ -845,7 +931,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
               </div>
               {detailListing.image_url ? (
                 <div className="detail-photo">
-                  <Image
+                  <LoadableImage
                     className="od-media"
                     src={detailListing.image_url}
                     alt={`photo of ${detailListing.name}`}
@@ -906,14 +992,6 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                       </small>
                     </span>
                   </div>
-                  {detailListing.legacy_rating_count > 0 ? (
-                    <div className="detail-trait">
-                      <span className="qc-lab">source</span>
-                      <span className="trait-count" style={{ gridColumn: '2 / -1' }}>
-                        historical self-report from the original flavor/sourness scores
-                      </span>
-                    </div>
-                  ) : null}
                   {renderTraitRows(detailListing, 'detail')}
                 </div>
                 {detailListing.description ? (
@@ -993,6 +1071,11 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                 </button>
               </div>
             </div>
+            {addView === 'search' && addQuery.trim().length >= 2 ? (
+              <button className="btn add-cta-btn" onClick={() => openNewForm(addQuery.trim())}>
+                + add “{addQuery.trim()}” as new
+              </button>
+            ) : null}
           </div>
           <div className="add-bar rate-sheet-bar" hidden={addView !== 'rate'}>
             <p id="rate-title">rate this lemonade</p>
@@ -1043,9 +1126,6 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                     {searchState !== 'loading' && searchState !== 'error' && searchResults.length === 0 ? (
                       <p className="note">no match for “{addQuery.trim()}” — looks like it’s new!</p>
                     ) : null}
-                    <button className="btn" onClick={() => openNewForm(addQuery.trim())}>
-                      + add “{addQuery.trim()}” as new
-                    </button>
                   </>
                 ) : null}
               </>
@@ -1415,7 +1495,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
               </button>
               <div className="card-lightbox-photo">
                 {lightboxListing.image_url ? (
-                  <Image
+                  <LoadableImage
                     className="od-media"
                     src={lightboxListing.image_url}
                     alt={`photo of ${lightboxListing.name}`}

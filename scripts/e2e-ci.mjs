@@ -145,7 +145,7 @@ async function main() {
   log('Running Playwright tests...', '\x1b[36m');
   const playwright = spawn(
     'npx',
-    ['playwright', 'test', '--project=chromium'],
+    ['playwright', 'test'],
     {
       stdio: 'inherit',
       env: { ...process.env, CI: '1', PLAYWRIGHT_BASE_URL: BASE_URL },

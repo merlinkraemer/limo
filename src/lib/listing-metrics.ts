@@ -6,9 +6,10 @@ export interface RankedListing<T> {
 }
 
 /**
- * Competition ranking over real scores: ties share the best rank and the next
- * distinct score skips the freed ranks (1, 1, 3). Unrated listings rank last
- * and tie with each other.
+ * Dense ordinal ranking over real scores: every listing gets exactly one
+ * position 1, 2, 3, … even when scores tie. Order is average score descending,
+ * then created_at ascending, then id — the same deterministic sort as before.
+ * Unrated listings rank last (still with their own ordinal).
  */
 export function assignRanks<T extends { id: string; created_at: string; avg_score: number | null }>(
   listings: readonly T[]
@@ -26,16 +27,25 @@ export function assignRanks<T extends { id: string; created_at: string; avg_scor
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 
-  let previousScore: number | null | undefined;
-  let previousRank = 0;
+  return sorted.map((listing, index) => ({ listing, rank: index + 1 }));
+}
 
-  return sorted.map((listing, index) => {
-    const rank =
-      previousScore === undefined || listing.avg_score !== previousScore ? index + 1 : previousRank;
-    previousScore = listing.avg_score;
-    previousRank = rank;
-    return { listing, rank };
-  });
+/**
+ * Exactly one medal per metal: gold/silver/bronze for the first three ordinal
+ * positions, and only when the listing has a real score. Unrated listings are
+ * never decorated just for being listed.
+ */
+export function medalFor(
+  rank: number,
+  avgScore: number | null
+): { emoji: string; name: string } | null {
+  if (avgScore === null || rank < 1 || rank > 3) return null;
+  const medals = [
+    { emoji: '🥇', name: 'gold' },
+    { emoji: '🥈', name: 'silver' },
+    { emoji: '🥉', name: 'bronze' },
+  ];
+  return medals[rank - 1];
 }
 
 /**

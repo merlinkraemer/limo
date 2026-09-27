@@ -4,6 +4,48 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const FOCUSABLE = 'button:not(:disabled), input, textarea, select, [tabindex="0"]';
 
+/**
+ * iOS Safari keeps the document scroller on <html>, so `body { overflow:hidden }`
+ * alone still lets the background scroll. Freeze the body with position:fixed
+ * (mobile only — the desktop layout scrolls inside main.wrap) and remember the
+ * offset so the exact scroll position is restored on close.
+ */
+function lockDocumentScroll(): number {
+  const scrollY = window.scrollY;
+  document.documentElement.classList.add('locked');
+  document.body.classList.add('locked');
+  if (!window.matchMedia('(min-width: 1024px)').matches) {
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
+  }
+  return scrollY;
+}
+
+function unlockDocumentScroll(scrollY: number) {
+  const wasFixed = document.body.style.position === 'fixed';
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.left = '';
+  document.body.style.right = '';
+  document.body.style.width = '';
+  document.documentElement.classList.remove('locked');
+  document.body.classList.remove('locked');
+  if (wasFixed) window.scrollTo(0, scrollY);
+}
+
+/** Publish the visual viewport so sheets can stay above a software keyboard. */
+function applyVisualViewportVars() {
+  const vv = window.visualViewport;
+  const height = vv?.height ?? window.innerHeight;
+  const inset = Math.max(0, window.innerHeight - ((vv?.offsetTop ?? 0) + height));
+  const root = document.documentElement;
+  root.style.setProperty('--app-vh', `${Math.round(height)}px`);
+  root.style.setProperty('--app-keyboard-inset', `${Math.round(inset)}px`);
+}
+
 interface LayerEntry {
   el: HTMLElement;
   opener: HTMLElement | null;
@@ -16,18 +58,19 @@ interface LayerEntry {
 export function useLayerStack() {
   const stack = useRef<LayerEntry[]>([]);
   const closers = useRef(new WeakMap<HTMLElement, () => void>());
+  const lockedScrollY = useRef(0);
 
   const register = useCallback((el: HTMLElement, close: () => void) => {
     closers.current.set(el, close);
     stack.current.push({ el, opener: (document.activeElement as HTMLElement) ?? null });
-    document.body.classList.add('locked');
+    if (stack.current.length === 1) lockedScrollY.current = lockDocumentScroll();
   }, []);
 
   const unregister = useCallback((el: HTMLElement) => {
     const index = stack.current.findIndex(entry => entry.el === el);
     if (index < 0) return;
     const [entry] = stack.current.splice(index, 1);
-    if (!stack.current.length) document.body.classList.remove('locked');
+    if (!stack.current.length) unlockDocumentScroll(lockedScrollY.current);
 
     const opener = entry.opener;
     if (opener && document.contains(opener) && opener.offsetParent !== null) {
@@ -35,6 +78,19 @@ export function useLayerStack() {
     } else {
       stack.current.at(-1)?.el.querySelector<HTMLElement>(FOCUSABLE)?.focus();
     }
+  }, []);
+
+  useEffect(() => {
+    applyVisualViewportVars();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', applyVisualViewportVars);
+    vv?.addEventListener('scroll', applyVisualViewportVars);
+    window.addEventListener('resize', applyVisualViewportVars);
+    return () => {
+      vv?.removeEventListener('resize', applyVisualViewportVars);
+      vv?.removeEventListener('scroll', applyVisualViewportVars);
+      window.removeEventListener('resize', applyVisualViewportVars);
+    };
   }, []);
 
   useEffect(() => {

@@ -88,6 +88,7 @@
 html, body { margin: 0; }
 body { background: var(--ground); color: var(--ink); font: 400 var(--fs-m)/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
 body.locked { overflow: hidden; }
+html.locked, body.locked { overflow: hidden !important; overscroll-behavior: none; touch-action: none; }
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; background: none; border: 0; padding: 0; text-align: inherit; }
 button:disabled { cursor: default; }
@@ -231,7 +232,7 @@ main.wrap { padding-top: var(--s4); padding-bottom: 112px; }
 .or { text-align: center; font: 600 var(--fs-s)/1 var(--mono); padding: 4px 0; }
 
 /* simplified detail surface */
-.detail-photo { display: grid; place-items: center; max-height: 48vh; overflow: hidden; background: var(--surface); border-bottom: 1px solid var(--rule); }
+.detail-photo { position: relative; display: grid; place-items: center; max-height: 48vh; overflow: hidden; background: var(--surface); border-bottom: 1px solid var(--rule); }
 .detail-photo img { width: auto; max-width: 100%; max-height: 48vh; object-fit: contain; }
 .detail-title { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s3); }
 .detail-title h2 { font: 600 var(--fs-xl)/1.2 var(--sans); overflow-wrap: anywhere; }
@@ -265,6 +266,11 @@ main.wrap { padding-top: var(--s4); padding-bottom: 112px; }
 .badge .of { display: none; }
 .game-followup-copy { font: 600 var(--fs-xs)/1.2 var(--sans); text-align: center; }
 .game-followup-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s1); width: 100%; }
+/* Desktop keeps the actions inside the narrow middle column, so stack them
+   vertically there; mobile has room for the side-by-side pair. Both ≥44px. */
+@media (min-width: 768px) {
+  .game-followup-actions { grid-template-columns: minmax(0, 1fr); }
+}
 .game-followup-actions .btn { min-height: 44px; justify-content: center; padding: 4px 8px; font-size: var(--fs-s); background: var(--card); color: var(--accent); border: 1px solid var(--accent); }
 .game-followup-actions .btn:not(:disabled):hover { background: var(--card); color: var(--accent); }
 .game-overlay-actions .btn { min-height: 44px; padding: 4px 8px; font-size: var(--fs-s); cursor: pointer; }
@@ -284,8 +290,8 @@ main.wrap { padding-top: var(--s4); padding-bottom: 112px; }
 .sheet-host { position: fixed; inset: 0; z-index: 50; pointer-events: none; }
 .sheet-host.detail { z-index: 60; }
 .sheet-host[data-open="true"] { pointer-events: auto; }
-.scrim { position: absolute; inset: 0; background: rgba(43,34,34,.45); opacity: 0; transition: opacity var(--t-out); }
-.panel { position: absolute; left: 50%; bottom: 0; width: min(560px, 100%); max-height: 96dvh; background: var(--ground); border: 1px solid var(--ink); border-bottom: 0; overflow-y: auto; overscroll-behavior: contain; transform: translate(-50%, 100%); transition: transform var(--t-out); }
+.scrim { position: absolute; inset: 0; background: rgba(43,34,34,.45); opacity: 0; transition: opacity var(--t-out); overscroll-behavior: none; }
+.panel { position: absolute; left: 50%; bottom: var(--app-keyboard-inset, 0px); width: min(560px, 100%); max-height: min(96dvh, var(--app-vh, 96dvh)); background: var(--ground); border: 1px solid var(--ink); border-bottom: 0; overflow-y: auto; overscroll-behavior: contain; transform: translate(-50%, 100%); transition: transform var(--t-out); padding-bottom: env(safe-area-inset-bottom, 0px); }
 .sheet-host[data-open="true"] .scrim { opacity: 1; transition: opacity var(--t-in); }
 .sheet-host[data-open="true"] .panel { transform: translate(-50%, 0); transition: transform var(--t-in); }
 @media (min-width: 768px) {
@@ -295,6 +301,7 @@ main.wrap { padding-top: var(--s4); padding-bottom: 112px; }
 .sheet-bar { position: sticky; top: 0; z-index: 1; background: var(--ground); border-bottom: 1px solid var(--rule); display: flex; align-items: center; gap: var(--s2); padding: 0 var(--s2) 0 var(--s4); min-height: 52px; }
 .sheet-bar p { flex: 1 1 0; min-width: 0; font: 500 var(--fs-s)/1.2 var(--mono); color: var(--muted); }
 .add-bar { display: grid; grid-template-columns: minmax(0,1fr); gap: var(--s2); align-items: end; padding: var(--s3) var(--s2) var(--s3) var(--s4); background: var(--lemon); border-bottom: 2px solid var(--ink); position: sticky; top: 0; z-index: 1; }
+.add-cta-btn { min-height: 44px; padding: 4px var(--s3); font-size: var(--fs-s); background: var(--card); color: var(--ink); border: 1px solid var(--ink); }
 .add-bar label { display: block; font: 600 var(--fs-xs)/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; margin-bottom: var(--s1); }
 .search-field { display: grid; grid-template-columns: minmax(0,1fr) 44px; align-items: center; border-bottom: 2px solid var(--ink); }
 .add-bar input { width: 100%; min-height: 48px; border: 0; background: transparent; font: 600 var(--fs-xl)/1.2 var(--mono); padding: 0; }
@@ -405,7 +412,7 @@ textarea.input { min-height: 96px; padding: var(--s2) var(--s3); resize: vertica
 .card-lightbox-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, .86); cursor: pointer; }
 .card-lightbox-panel { position: relative; display: grid; grid-template-rows: minmax(0,1fr) auto; width: min(100%, 960px); height: 100%; max-height: 100%; color: #fff; }
 .card-lightbox-close { position: absolute; z-index: 1; top: 4px; right: 4px; color: #fff; background: transparent; border-color: rgba(255,255,255,.7); }
-.card-lightbox-photo { display: grid; place-items: center; min-height: 0; padding: 48px 0 16px; }
+.card-lightbox-photo { position: relative; display: grid; place-items: center; min-height: 0; padding: 48px 0 16px; }
 .card-lightbox-photo img { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(100vh - 184px); object-fit: contain; }
 .card-lightbox-photo .ph { width: min(100%, 360px); aspect-ratio: 9 / 16; }
 .card-lightbox-caption { display: grid; gap: 4px; padding: 8px 52px max(8px, env(safe-area-inset-bottom)); text-align: center; }
@@ -472,3 +479,17 @@ textarea.input { min-height: 96px; padding: var(--s2) var(--s3); resize: vertica
 .trait-count { font: 400 var(--fs-xs)/1.2 var(--mono); color: var(--muted); }
 .my-rating { font: 500 var(--fs-s)/1.4 var(--mono); }
 .photo-uploading { opacity: .6; }
+
+/* ── image loading state ── */
+.img-skeleton { position: absolute; inset: 0; z-index: 1; display: block; pointer-events: none; background: linear-gradient(100deg, var(--surface) 30%, var(--card) 50%, var(--surface) 70%); background-size: 200% 100%; animation: img-shimmer 1.2s ease-in-out infinite; }
+.img-skeleton.is-error { animation: none; background: var(--surface); display: grid; place-items: center; font: 500 var(--fs-xs)/1.2 var(--mono); color: var(--muted); text-align: center; padding: var(--s2); }
+@keyframes img-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .img-skeleton { animation: none; } }
+
+/* ── game card pending state ── */
+.qc.is-pending { outline: 3px solid var(--accent); outline-offset: 2px; }
+.qc-pending { position: absolute; z-index: 3; inset: 0; display: grid; place-items: center; background: rgba(233, 196, 59, .45); font: 600 var(--fs-m)/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--ink); }
+
+/* ── bounded next-pair prewarm (offscreen, at most two images) ── */
+.game-warm { position: fixed; left: -10000px; top: 0; width: 320px; height: 320px; overflow: hidden; pointer-events: none; opacity: 0; }
+.game-warm-slot { position: relative; display: block; width: 1px; height: 1px; }
