@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CROWD_MIN_VOTES,
   alignmentSummary,
   alignmentTitle,
   buildPairs,
   outcomeFor,
+  revealFor,
   seededRng,
   shuffle,
+  type RoundOutcome,
 } from '@/lib/matchup';
 import type { MatchupResult } from '@/types/lemonade';
 
@@ -19,6 +22,9 @@ const result = (partial: Partial<MatchupResult>): MatchupResult => ({
   percent_b: null,
   ...partial,
 });
+
+const noScores = { a: null, b: null };
+const scores = (a: number | null, b: number | null) => ({ a, b });
 
 const ids = Array.from({ length: 24 }, (_, i) => `id-${i}`);
 
@@ -51,52 +57,171 @@ describe('buildPairs', () => {
 });
 
 describe('outcomeFor', () => {
-  it('marks the first real vote as first_vote, never as agreement', () => {
-    const outcome = outcomeFor(result({ votes_a: 1, total_votes: 1, percent_a: 100, percent_b: 0 }), 'a');
-    expect(outcome.result).toBe('first_vote');
-    expect(outcome.priorVotes).toBe(0);
-    expect(outcome.myVotes).toBe(1);
+  it(`uses score fallback for fewer than ${CROWD_MIN_VOTES} real votes and never a crowd`, () => {
+    for (const total of [1, 2]) {
+      const outcome = outcomeFor(
+        result({ votes_a: total, votes_b: 0, total_votes: total }),
+        'a',
+        scores(9, 4)
+      );
+      expect(outcome.mode).toBe('score');
+      expect(outcome.result).toBe('agreed');
+      expect(outcome.winnerId).toBe('a');
+      expect(outcome.myVotes + outcome.otherVotes).toBe(total);
+    }
   });
 
-  it('marks agreement when the picked side leads after my vote', () => {
-    const outcome = outcomeFor(result({ votes_a: 4, votes_b: 2, total_votes: 6 }), 'a');
+  it('marks the higher score as the winner regardless of the pick', () => {
+    const pickedBetter = outcomeFor(result({ votes_a: 1, votes_b: 1, total_votes: 2 }), 'b', scores(3, 8));
+    expect(pickedBetter.winnerId).toBe('b');
+    expect(pickedBetter.result).toBe('agreed');
+
+    const pickedWorse = outcomeFor(result({ votes_a: 1, votes_b: 1, total_votes: 2 }), 'a', scores(3, 8));
+    expect(pickedWorse.winnerId).toBe('b');
+    expect(pickedWorse.result).toBe('disagreed');
+  });
+
+  it('treats equal or unknown scores as a neutral tie below the threshold', () => {
+    for (const pair of [scores(5, 5), noScores, scores(8, null), scores(null, 8)]) {
+      const outcome = outcomeFor(result({ votes_a: 1, total_votes: 1 }), 'a', pair);
+      expect(outcome.mode).toBe('score');
+      expect(outcome.result).toBe('tied');
+      expect(outcome.winnerId).toBeNull();
+    }
+  });
+
+  it('switches to a real crowd verdict at 3+ votes', () => {
+    const outcome = outcomeFor(
+      result({ votes_a: 3, votes_b: 2, total_votes: 5, percent_a: 60, percent_b: 40 }),
+      'a',
+      scores(2, 9)
+    );
+    expect(outcome.mode).toBe('crowd');
     expect(outcome.result).toBe('agreed');
-    expect(outcome.priorVotes).toBe(5);
+    expect(outcome.winnerId).toBe('a');
   });
 
-  it('marks disagreement when the other side leads', () => {
-    const outcome = outcomeFor(result({ votes_a: 4, votes_b: 2, total_votes: 6 }), 'b');
+  it('marks the winner by crowd majority, not by the pick', () => {
+    const outcome = outcomeFor(
+      result({ votes_a: 1, votes_b: 4, total_votes: 5 }),
+      'a',
+      scores(10, 1)
+    );
+    expect(outcome.mode).toBe('crowd');
+    expect(outcome.winnerId).toBe('b');
     expect(outcome.result).toBe('disagreed');
   });
 
-  it('marks a tie when both sides have equal real votes', () => {
-    const outcome = outcomeFor(result({ votes_a: 3, votes_b: 3, total_votes: 6 }), 'b');
+  it('keeps a crowd tie neutral', () => {
+    const outcome = outcomeFor(result({ votes_a: 2, votes_b: 2, total_votes: 4 }), 'b', scores(9, 1));
+    expect(outcome.mode).toBe('crowd');
+    expect(outcome.winnerId).toBeNull();
     expect(outcome.result).toBe('tied');
   });
 
   it('compares the picked side using the pair order returned by the database', () => {
     const outcome = outcomeFor(
-      result({ lemonade_a: 'zzz', lemonade_b: 'aaa', votes_a: 2, votes_b: 5, total_votes: 7 }),
-      'aaa'
+      result({ lemonade_a: 'zzz', lemonade_b: 'aaa', votes_a: 2, votes_b: 2, total_votes: 4 }),
+      'aaa',
+      noScores
     );
-    expect(outcome.myVotes).toBe(5);
+    expect(outcome.myVotes).toBe(2);
     expect(outcome.otherVotes).toBe(2);
-    expect(outcome.result).toBe('agreed');
+  });
+});
+
+describe('revealFor', () => {
+  const crowd = (votesA: number, votesB: number, picked: 'a' | 'b'): RoundOutcome =>
+    outcomeFor(
+      result({ votes_a: votesA, votes_b: votesB, total_votes: votesA + votesB }),
+      picked,
+      noScores
+    );
+
+  it('shows genuine percentages and a crowd label at 3+ votes', () => {
+    const view = revealFor(crowd(3, 1, 'a'), 'a');
+    expect(view.className).toBe('win');
+    expect(view.label).toBe('crowd vote');
+    expect(view.percent).toBe(75);
+    expect(view.note).toBe('you picked this');
+
+    expect(revealFor(crowd(3, 1, 'a'), 'b').percent).toBe(25);
+  });
+
+  it('marks the crowd majority as the winner even when the player disagreed', () => {
+    const outcome = crowd(1, 3, 'a');
+    expect(revealFor(outcome, 'b').className).toBe('win');
+    expect(revealFor(outcome, 'a').className).toBe('lose');
+  });
+
+  it('keeps a crowd tie neutral for both cards', () => {
+    const outcome = crowd(2, 2, 'a');
+    const left = revealFor(outcome, 'a');
+    const right = revealFor(outcome, 'b');
+    expect(left.className).toBe('tie');
+    expect(right.className).toBe('tie');
+    expect(left.label).toBe('tied vote');
+    expect(left.percent).toBe(50);
+  });
+
+  it('has no percentage and no crowd language in score mode', () => {
+    const outcome = outcomeFor(result({ votes_a: 1, votes_b: 1, total_votes: 2 }), 'b', scores(4, 9));
+    const winner = revealFor(outcome, 'b');
+    expect(winner.className).toBe('win');
+    expect(winner.label).toBe('higher score');
+    expect(winner.percent).toBeNull();
+    expect(winner.label).not.toMatch(/crowd vote/i);
+    expect(winner.note).toBe('you picked this — by score');
+
+    const loser = revealFor(outcome, 'a');
+    expect(loser.className).toBe('lose');
+    expect(loser.label).toBe('lower score');
+    expect(loser.percent).toBeNull();
+    expect(loser.label).not.toMatch(/crowd/i);
+    expect(loser.note).toBe('no crowd votes yet');
+  });
+
+  it('labels an undecided score round as a tie with no percentage', () => {
+    const outcome = outcomeFor(result({ votes_a: 1, total_votes: 1 }), 'a', noScores);
+    const view = revealFor(outcome, 'a');
+    expect(view.className).toBe('tie');
+    expect(view.label).toBe('score tie');
+    expect(view.percent).toBeNull();
   });
 });
 
 describe('alignmentSummary', () => {
-  it('only counts meaningful rounds towards the alignment score', () => {
-    const summary = alignmentSummary([
-      { round: 0, picked: 'a', outcome: { result: 'agreed', myVotes: 2, otherVotes: 0, priorVotes: 1 } },
-      { round: 1, picked: 'b', outcome: { result: 'first_vote', myVotes: 1, otherVotes: 0, priorVotes: 0 } },
-      { round: 2, picked: 'a', outcome: { result: 'disagreed', myVotes: 1, otherVotes: 3, priorVotes: 3 } },
-      { round: 3, picked: 'b', outcome: { result: 'tied', myVotes: 2, otherVotes: 2, priorVotes: 3 } },
-    ]);
-    expect(summary).toEqual({ meaningful: 3, agreed: 1, firstVotes: 1, ties: 1 });
+  const outcome = (partial: Partial<RoundOutcome>): RoundOutcome => ({
+    mode: 'crowd',
+    result: 'agreed',
+    winnerId: 'a',
+    picked: 'a',
+    myVotes: 2,
+    otherVotes: 1,
+    priorVotes: 2,
+    ...partial,
   });
 
-  it('has no title-worthy score when nobody voted before this browser', () => {
-    expect(alignmentTitle(0, 0)).toBe('no crowd to match yet');
+  it('tracks wins per active mode and keeps ties neutral', () => {
+    const summary = alignmentSummary([
+      { round: 0, picked: 'a', outcome: outcome({ result: 'agreed' }) },
+      { round: 1, picked: 'b', outcome: outcome({ result: 'disagreed', winnerId: 'a', picked: 'b' }) },
+      { round: 2, picked: 'a', outcome: outcome({ result: 'tied', winnerId: null }) },
+      { round: 3, picked: 'a', outcome: outcome({ mode: 'score', result: 'agreed', winnerId: 'a' }) },
+      { round: 4, picked: 'b', outcome: outcome({ mode: 'score', result: 'tied', winnerId: null, picked: 'b' }) },
+    ]);
+    expect(summary).toEqual({
+      decided: 3,
+      agreed: 2,
+      crowdRounds: 3,
+      crowdAgreed: 1,
+      scoreRounds: 2,
+      scoreAgreed: 1,
+      ties: 2,
+    });
+  });
+
+  it('has no title-worthy score when nothing was decided', () => {
+    expect(alignmentTitle(0, 0)).toBe('no verdicts yet');
   });
 });

@@ -150,7 +150,7 @@ main.wrap { padding-top: var(--s4); padding-bottom: 112px; }
 @media (hover: hover) { .row:hover .row-name { text-decoration: underline; text-underline-offset: 3px; } }
 .rk { font: 500 var(--fs-s)/1 var(--mono); color: var(--muted); opacity: .8; text-align: center; }
 .rk.medal { opacity: 1; }
-.thumb { display: block; border: 1px solid var(--ink); background: var(--surface); }
+.thumb { display: block; position: relative; aspect-ratio: 1; border: 1px solid var(--ink); background: var(--surface); }
 .row-name { color: var(--ink); }
 .score { font: 500 var(--fs-s)/1 var(--mono); white-space: nowrap; color: var(--ink); }
 .score i { font-style: normal; color: var(--star); margin-left: 4px; }
@@ -198,6 +198,7 @@ main.wrap { padding-top: var(--s4); padding-bottom: 112px; }
 .squares li.hit { background: var(--hit); border-color: var(--hit); color: #fff; }
 .squares li.miss { background: var(--miss); border-color: var(--miss); color: #fff; }
 .squares li:not(.hit):not(.miss):not(.now) { opacity: .45; }
+.squares li.tie { background: var(--card); border-color: var(--ink); color: var(--muted); }
 .squares li.now { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* quartet game card */
@@ -365,7 +366,7 @@ textarea.input { min-height: 96px; padding: var(--s2) var(--s3); resize: vertica
 .game .qc-head { grid-column: 1; grid-row: 1; display: flex; min-width: 0; gap: 6px; padding: 4px 6px; background: var(--lemon); }
 .game .qc-code { width: auto; height: auto; border: 0; border-radius: 0; background: transparent; font-size: 18px; }
 .game .qc-name { min-width: 0; font-size: var(--fs-s); }
-.game .qc-img { grid-column: 1; grid-row: 2; align-self: stretch; display: grid; place-items: center; min-width: 0; min-height: 0; overflow: hidden; border: 0; background: var(--surface); }
+.game .qc-img { grid-column: 1; grid-row: 2; position: relative; align-self: stretch; display: grid; place-items: center; min-width: 0; min-height: 0; overflow: hidden; border: 0; background: var(--surface); }
 .game .qc-img img { width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
 .game .qc-img .ph { width: 100%; height: auto; max-height: 100%; aspect-ratio: 9 / 16; }
 .game .qc-rows { display: none; }

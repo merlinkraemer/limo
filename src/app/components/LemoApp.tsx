@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   castVote,
@@ -20,6 +21,7 @@ import {
   alignmentTitle,
   buildPairs,
   outcomeFor,
+  revealFor,
   seededRng,
   shuffle,
   type RoundOutcome,
@@ -130,11 +132,28 @@ function Meter({ level }: { level: number | null }) {
   );
 }
 
-function Thumb({ listing, ratio = '1', small = true }: { listing: Pick<ListingSummary, 'name' | 'image_url'>; ratio?: string; small?: boolean }) {
+function Thumb({
+  listing,
+  ratio = '1',
+  small = true,
+  priority = false,
+}: {
+  listing: Pick<ListingSummary, 'name' | 'image_url'>;
+  ratio?: string;
+  small?: boolean;
+  priority?: boolean;
+}) {
   if (!listing.image_url) return <Placeholder name={listing.name} ratio={ratio} small={small} />;
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img className="od-media od-media-cover" style={{ '--od-ratio': ratio } as CSSProperties} src={listing.image_url} alt="" loading="lazy" />
+    <Image
+      className="od-media od-media-cover"
+      style={{ '--od-ratio': ratio } as CSSProperties}
+      src={listing.image_url}
+      alt=""
+      fill
+      sizes="44px"
+      priority={priority}
+    />
   );
 }
 
@@ -167,7 +186,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
   const [rateComment, setRateComment] = useState('');
   const [showRateComment, setShowRateComment] = useState(false);
   const [rateDone, setRateDone] = useState<number | null>(null);
-  const [rateReturnToGame, setRateReturnToGame] = useState(false);
+  const [rateReturnTo, setRateReturnTo] = useState<'game' | 'detail' | null>(null);
   const [rateSaving, setRateSaving] = useState(false);
   const [rateError, setRateError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
@@ -207,7 +226,12 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
   const alignment = useMemo(() => alignmentSummary(history), [history]);
 
   const closeDetail = useCallback(() => setDetailId(null), []);
-  const closeAdd = useCallback(() => setAddOpen(false), []);
+  const closeAdd = useCallback(() => {
+    setAddOpen(false);
+    // A rate sheet opened from the detail modal hands control back to that modal.
+    if (rateReturnTo === 'detail' && addId) setDetailId(addId);
+    setRateReturnTo(null);
+  }, [rateReturnTo, addId]);
   const closeGameLayer = useCallback(() => setGameOpen(false), []);
   const closeEnd = useCallback(() => setEndOpen(false), []);
   const closeLightbox = useCallback(() => setLightboxId(null), []);
@@ -277,7 +301,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
     setDetailId(id);
   }
 
-  function openAdd(rateId?: string, options?: { returnToGame?: boolean }) {
+  function openAdd(rateId?: string, options?: { returnTo?: 'game' | 'detail' }) {
     setAddOpen(true);
     if (!rateId) setAddQuery('');
     setSearchResults([]);
@@ -288,7 +312,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
     setFormError(null);
     setDuplicateId(null);
     setDone(null);
-    setRateReturnToGame(!!options?.returnToGame);
+    setRateReturnTo(options?.returnTo ?? null);
     if (rateId) {
       const mine = myRatings.find(rating => rating.listing_id === rateId);
       setAddId(rateId);
@@ -349,9 +373,14 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
     const mine = await fetchMyRatings();
     if (mine.ok) setMyRatings(mine.ratings);
     router.refresh();
-    if (rateReturnToGame) {
+    if (rateReturnTo === 'game') {
       setAddOpen(false);
+      setRateReturnTo(null);
       advance();
+    } else if (rateReturnTo === 'detail') {
+      // closeAdd() closes this sheet and reopens the origin detail modal,
+      // which re-reads the refreshed listing on the next render.
+      closeAdd();
     }
   }
 
@@ -473,7 +502,11 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
       setVoting(false);
       return;
     }
-    const roundOutcome = outcomeFor(result.result, listingId);
+    const scoreFor = (id: string) => listingById.get(id)?.avg_score ?? null;
+    const roundOutcome = outcomeFor(result.result, listingId, {
+      a: scoreFor(result.result.lemonade_a),
+      b: scoreFor(result.result.lemonade_b),
+    });
     setPicked(listingId);
     setOutcome(roundOutcome);
     setHistory(records => [...records, { round, picked: listingId, outcome: roundOutcome }]);
@@ -504,7 +537,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
             </span>
           )}
           <span className="thumb">
-            <Thumb listing={listing} />
+            <Thumb listing={listing} priority={rank === 1} />
           </span>
           <span className="row-name od-clamp-2">{listing.name}</span>
           <span className="score">
@@ -518,62 +551,49 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
   }
 
   function renderTraitRows(listing: ListingSummary, variant: 'detail' | 'card') {
-    return TRAITS.map(trait => {
+    return TRAITS.flatMap(trait => {
       const { avg, count } = traitOf(listing, trait.key);
-      const level = count > 0 && avg !== null ? Math.max(0, Math.min(3, Math.round(avg))) : null;
-      const label = level === null ? '–' : trait.words[level];
-      const title = count > 0 && avg !== null ? `average ${avg.toFixed(1)} from ${count} rating${count === 1 ? '' : 's'}` : 'no trait ratings yet';
+      // Traits nobody rated are omitted entirely — never a "–" placeholder row.
+      if (count <= 0 || avg === null) return [];
+      const level = Math.max(0, Math.min(3, Math.round(avg)));
+      const label = trait.words[level];
+      const title = `average ${avg.toFixed(1)} from ${count} rating${count === 1 ? '' : 's'}`;
       if (variant === 'card') {
-        return (
+        return [
           <span className="qc-row" key={trait.key}>
             <span className="qc-lab">{trait.key}</span>
             <Meter level={level} />
             <span className="qc-val">{label}</span>
-          </span>
-        );
+          </span>,
+        ];
       }
-      return (
+      return [
         <div className="detail-trait" key={trait.key} title={title}>
           <span className="qc-lab">{trait.key}</span>
           <Meter level={level} />
           <span className="qc-val">
             {label}
-            {count > 0 ? <span className="trait-count"> · {count}</span> : null}
+            <span className="trait-count"> · {count}</span>
           </span>
-        </div>
-      );
+        </div>,
+      ];
     });
   }
 
-  function renderGameCard(listing: ListingSummary, position: 'left' | 'right', isA: boolean) {
+  function renderGameCard(listing: ListingSummary, position: 'left' | 'right') {
     const revealed = !!picked && !!outcome;
-    const isPicked = picked === listing.id;
-    const pct = revealed
-      ? (() => {
-          const myVotes = isA
-            ? picked === pair?.a
-              ? outcome!.myVotes
-              : outcome!.otherVotes
-            : picked === pair?.b
-              ? outcome!.myVotes
-              : outcome!.otherVotes;
-          const total = outcome!.myVotes + outcome!.otherVotes;
-          return total > 0 ? Math.round((myVotes / total) * 10000) / 100 : null;
-        })()
-      : null;
-    const resultLabel = !revealed
-      ? ''
-      : outcome!.result === 'first_vote'
-        ? 'first vote'
-        : outcome!.result === 'tied'
-          ? 'tied vote'
-          : 'crowd vote';
-    const revealClass =
-      outcome?.result === 'tied' || outcome?.result === 'first_vote'
-        ? 'tie'
-        : isPicked
-          ? 'win'
-          : 'lose';
+    const view = revealed ? revealFor(outcome!, listing.id) : null;
+    const cardImage = listing.image_url ? (
+      <Image
+        className="od-media"
+        src={listing.image_url}
+        alt=""
+        fill
+        sizes={isDesktop ? '320px' : '(max-width: 767px) 90vw, 45vw'}
+      />
+    ) : (
+      <Placeholder name={listing.name} ratio="9 / 16" />
+    );
 
     return (
       <div className="card-wrap" data-card-position={position}>
@@ -586,26 +606,17 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                 </span>
                 <span className="qc-name od-clamp-2">{listing.name}</span>
               </span>
-              <span className="qc-img">
-                {listing.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img className="od-media" src={listing.image_url} alt="" loading="lazy" />
-                ) : (
-                  <Placeholder name={listing.name} ratio="9 / 16" />
-                )}
-              </span>
+              <span className="qc-img">{cardImage}</span>
               <span className="qc-foot">
                 <span className="qc-location od-truncate">{listing.location_city || 'somewhere'}</span>
                 <span className="od-nowrap">submitted by: {listing.added_by || 'anon'}</span>
               </span>
             </span>
-            <div className={`reveal ${revealClass}`} aria-live="polite">
+            <div className={`reveal ${view!.className}`} aria-live="polite">
               <div className="badge">
-                <span className="lab">{resultLabel}</span>
-                {pct === null ? (
-                  <span className="pct">—</span>
-                ) : (
-                  <span className="pct">{pct.toFixed(1).replace('.', ',')}%</span>
+                <span className="lab">{view!.label}</span>
+                {view!.percent === null ? null : (
+                  <span className="pct">{view!.percent.toFixed(1).replace('.', ',')}%</span>
                 )}
                 <span className="result-score">
                   <span>{fmtScore(listing.avg_score)}</span>
@@ -613,11 +624,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                     ☆
                   </span>
                 </span>
-                {outcome?.result === 'first_vote' ? (
-                  <span className="result-note">no crowd yet</span>
-                ) : isPicked ? (
-                  <span className="result-note">you picked this</span>
-                ) : null}
+                {view!.note ? <span className="result-note">{view!.note}</span> : null}
               </div>
             </div>
           </div>
@@ -636,14 +643,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                 </span>
                 <span className="qc-name od-clamp-2">{listing.name}</span>
               </span>
-              <span className="qc-img">
-                {listing.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img className="od-media" src={listing.image_url} alt="" loading="lazy" />
-                ) : (
-                  <Placeholder name={listing.name} ratio="9 / 16" />
-                )}
-              </span>
+              <span className="qc-img">{cardImage}</span>
               <span className="qc-foot">
                 <span className="qc-location od-truncate">{listing.location_city || 'somewhere'}</span>
                 <span className="od-nowrap">submitted by: {listing.added_by || 'anon'}</span>
@@ -773,13 +773,23 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                   >
                     {roundPairs.map((_, index) => {
                       const record = history[index];
+                      const roundClass = record
+                        ? record.outcome.result === 'agreed'
+                          ? 'hit'
+                          : record.outcome.result === 'tied'
+                            ? 'tie'
+                            : 'miss'
+                        : '';
+                      const roundLabel = record
+                        ? record.outcome.result === 'agreed'
+                          ? 'right'
+                          : record.outcome.result === 'tied'
+                            ? 'no winner'
+                            : 'wrong'
+                        : `round ${index + 1}`;
                       return record ? (
-                        <li
-                          key={index}
-                          className={record.outcome.result === 'agreed' ? 'hit' : 'miss'}
-                          aria-label={`round ${index + 1}: ${record.outcome.result === 'agreed' ? 'right' : record.outcome.result === 'first_vote' || record.outcome.result === 'tied' ? 'no crowd verdict' : 'wrong'}`}
-                        >
-                          {record.outcome.result === 'agreed' ? '✓' : record.outcome.result === 'first_vote' || record.outcome.result === 'tied' ? '–' : '×'}
+                        <li key={index} className={roundClass} aria-label={`round ${index + 1}: ${roundLabel}`}>
+                          {record.outcome.result === 'agreed' ? '✓' : record.outcome.result === 'tied' ? '–' : '×'}
                         </li>
                       ) : (
                         <li key={index} className={index === round ? 'now' : ''} aria-label={`round ${index + 1}`}>
@@ -788,13 +798,13 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                       );
                     })}
                   </ol>
-                  {cardA ? renderGameCard(cardA, 'left', true) : null}
+                  {cardA ? renderGameCard(cardA, 'left') : null}
                   <div className={`or${picked && outcome ? ' has-followup' : ''}`}>
                     {picked && outcome ? (
                       <>
                         <p className="game-followup-copy">did you drink this?</p>
                         <div className="game-followup-actions">
-                          <button type="button" className="btn" data-act="game-had-it" data-first onClick={() => openAdd(picked, { returnToGame: true })}>
+                          <button type="button" className="btn" data-act="game-had-it" data-first onClick={() => openAdd(picked, { returnTo: 'game' })}>
                             yes
                           </button>
                           <button type="button" className="btn btn-ghost" onClick={advance}>
@@ -803,12 +813,12 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                         </div>
                       </>
                     ) : (
-                      <p className="or" aria-hidden="true">
+                      <p className="or-text" aria-hidden="true">
                         or
                       </p>
                     )}
                   </div>
-                  {cardB ? renderGameCard(cardB, 'right', false) : null}
+                  {cardB ? renderGameCard(cardB, 'right') : null}
                   {gameError ? <p className="err flash">{gameError}</p> : null}
                 </>
               )}
@@ -834,8 +844,15 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
               </div>
               {detailListing.image_url ? (
                 <div className="detail-photo">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img className="od-media" src={detailListing.image_url} alt={`photo of ${detailListing.name}`} />
+                  <Image
+                    className="od-media"
+                    src={detailListing.image_url}
+                    alt={`photo of ${detailListing.name}`}
+                    width={900}
+                    height={1200}
+                    sizes="(min-width: 768px) 560px, 100vw"
+                    priority
+                  />
                 </div>
               ) : (
                 <div className="detail-photo-contrib">
@@ -925,7 +942,15 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                   </div>
                 </dl>
                 <div className="detail-actions">
-                  <button className="btn" onClick={() => openAdd(detailListing.id)}>
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      const id = detailListing.id;
+                      // Rate mode owns the top layer: close detail, remember its origin.
+                      setDetailId(null);
+                      openAdd(id, { returnTo: 'detail' });
+                    }}
+                  >
                     {detailMyRating ? 'edit your rating' : 'rate it'}
                   </button>
                   <button className="btn btn-ghost" onClick={closeDetail}>
@@ -1033,8 +1058,8 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                       <b>{rateDone}/10</b> <span aria-label="star">★</span>
                     </p>
                     <p className="note">saved for {rateListingForSheet.name}.</p>
-                    {rateReturnToGame ? (
-                      <button className="btn" data-first onClick={() => { setAddOpen(false); advance(); }}>
+                    {rateReturnTo === 'game' ? (
+                      <button className="btn" data-first onClick={() => { setAddOpen(false); setRateReturnTo(null); advance(); }}>
                         back to game
                       </button>
                     ) : (
@@ -1063,8 +1088,12 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                       className="link-btn"
                       style={{ justifySelf: 'start' }}
                       onClick={() => {
-                        setAddId(null);
-                        setAddView('search');
+                        if (rateReturnTo === 'detail') {
+                          closeAdd();
+                        } else {
+                          setAddId(null);
+                          setAddView('search');
+                        }
                       }}
                     >
                       ← not this one
@@ -1335,24 +1364,35 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
               🎉
             </p>
             <h2 id="end-h">thanks for playing!</h2>
-            {alignment.meaningful > 0 ? (
+            {alignment.decided > 0 ? (
               <>
                 <p className="big">
                   {alignment.agreed}
-                  <small>/{alignment.meaningful}</small>
+                  <small>/{alignment.decided}</small>
                 </p>
-                <p className="ttl">{alignmentTitle(alignment.agreed, alignment.meaningful)}</p>
+                <p className="ttl">{alignmentTitle(alignment.agreed, alignment.decided)}</p>
                 <p>
-                  you picked the crowd favorite {alignment.agreed} of {alignment.meaningful} times with real votes
-                  {alignment.firstVotes > 0
-                    ? `, and cast the first vote in ${alignment.firstVotes} more.`
-                    : `, with ${alignment.ties} tie${alignment.ties === 1 ? '' : 's'}.`}
+                  {alignment.crowdRounds > 0
+                    ? `you matched the crowd in ${alignment.crowdAgreed} of ${alignment.crowdRounds} matchup${alignment.crowdRounds === 1 ? '' : 's'} with real votes`
+                    : 'no crowd voted yet — every call came down to the listed scores'}
+                  {alignment.scoreRounds > 0 ? (
+                    <>
+                      {alignment.crowdRounds > 0 ? '; ' : ''}
+                      you picked the higher score in {alignment.scoreAgreed} of {alignment.scoreRounds}{' '}
+                      score-fallback matchup{alignment.scoreRounds === 1 ? '' : 's'}
+                    </>
+                  ) : null}
+                  {alignment.ties > 0
+                    ? `, with ${alignment.ties} neutral tie${alignment.ties === 1 ? '' : 's'}.`
+                    : '.'}
                 </p>
               </>
             ) : (
               <>
                 <p className="note">
-                  no crowd votes were there before you — your {alignment.firstVotes} picks set the pace instead.
+                  {alignment.ties > 0
+                    ? `no winner in ${alignment.ties} matchup${alignment.ties === 1 ? '' : 's'} yet — pick a side to get started.`
+                    : 'no rounds played yet — pick a side to get started.'}
                 </p>
                 <p className="ttl">{alignmentTitle(0, 0)}</p>
               </>
@@ -1388,8 +1428,14 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
               </button>
               <div className="card-lightbox-photo">
                 {lightboxListing.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={lightboxListing.image_url} alt={`photo of ${lightboxListing.name}`} />
+                  <Image
+                    src={lightboxListing.image_url}
+                    alt={`photo of ${lightboxListing.name}`}
+                    width={900}
+                    height={1200}
+                    sizes="(max-width: 960px) 100vw, 960px"
+                    loading="eager"
+                  />
                 ) : (
                   <Placeholder name={lightboxListing.name} ratio="9 / 16" />
                 )}

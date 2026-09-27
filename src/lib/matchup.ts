@@ -1,25 +1,39 @@
 import type { MatchupResult } from '@/types/lemonade';
+import { votePercent } from '@/lib/listing-metrics';
 
 /**
- * Pure helpers for the yay-or-nay preference game. The game never invents a
- * crowd: every reveal comes from a real `get_matchup_result` row, and an
- * alignment point is only awarded when other people had already voted.
+ * Pure helpers for the yay-or-nay preference game. A reveal is either a real
+ * crowd verdict (3+ real votes on the matchup) or a score fallback that never
+ * pretends the listed scores are votes.
  */
 
 export const GAME_ROUNDS = 10;
+
+/** Real matchup votes (including this browser's pick) before a crowd exists. */
+export const CROWD_MIN_VOTES = 3;
 
 export interface GamePair {
   a: string;
   b: string;
 }
 
-export type RoundResult = 'agreed' | 'disagreed' | 'tied' | 'first_vote';
+/** How the reveal decided its winner. */
+export type RoundMode = 'crowd' | 'score';
+
+/** The picked listing's standing after the vote. */
+export type RoundResult = 'agreed' | 'disagreed' | 'tied';
 
 export interface RoundOutcome {
+  mode: RoundMode;
   result: RoundResult;
+  /** winning listing, or null when the round is a neutral tie */
+  winnerId: string | null;
+  picked: string;
+  /** votes for the picked listing (including this browser's vote) */
   myVotes: number;
+  /** votes for the other listing */
   otherVotes: number;
-  /** votes that existed before this browser voted (total - 1) */
+  /** real votes that existed before this browser voted (total - 1) */
   priorVotes: number;
 }
 
@@ -27,6 +41,12 @@ export interface RoundRecord {
   round: number;
   picked: string;
   outcome: RoundOutcome;
+}
+
+/** Score per matchup side; null means the listing has no real rating yet. */
+export interface MatchupScores {
+  a: number | null;
+  b: number | null;
 }
 
 /** Deterministic RNG so a listing set always yields the same initial deck. */
@@ -88,60 +108,128 @@ export function buildPairs(ids: readonly string[], rounds = GAME_ROUNDS): GamePa
 
 /**
  * Turn a real matchup result (which already includes this browser's vote) into
- * an honest round outcome. A single first vote is not a crowd.
+ * an honest round outcome.
+ *
+ * - 3+ real votes: crowd mode, winner = real vote majority, percentages real.
+ * - fewer: score mode, winner = higher overall score, equal/unknown = tie.
+ *   The overlay must not show percentages or call the result a crowd.
  */
-export function outcomeFor(result: MatchupResult, picked: string): RoundOutcome {
+export function outcomeFor(result: MatchupResult, picked: string, scores: MatchupScores): RoundOutcome {
   const pickedA = picked === result.lemonade_a;
   const myVotes = pickedA ? result.votes_a : result.votes_b;
   const otherVotes = pickedA ? result.votes_b : result.votes_a;
   const priorVotes = Math.max(0, result.total_votes - 1);
+  const crowd = result.total_votes >= CROWD_MIN_VOTES;
 
-  if (priorVotes <= 0) {
-    return { result: 'first_vote', myVotes, otherVotes, priorVotes };
+  let winnerId: string | null = null;
+  if (crowd) {
+    if (result.votes_a > result.votes_b) winnerId = result.lemonade_a;
+    else if (result.votes_b > result.votes_a) winnerId = result.lemonade_b;
+  } else if (scores.a !== null && scores.b !== null && scores.a !== scores.b) {
+    winnerId = scores.a > scores.b ? result.lemonade_a : result.lemonade_b;
   }
-  if (myVotes > otherVotes) {
-    return { result: 'agreed', myVotes, otherVotes, priorVotes };
-  }
-  if (myVotes < otherVotes) {
-    return { result: 'disagreed', myVotes, otherVotes, priorVotes };
-  }
-  return { result: 'tied', myVotes, otherVotes, priorVotes };
+
+  const roundResult: RoundResult =
+    winnerId === null ? 'tied' : winnerId === picked ? 'agreed' : 'disagreed';
+
+  return {
+    mode: crowd ? 'crowd' : 'score',
+    result: roundResult,
+    winnerId,
+    picked,
+    myVotes,
+    otherVotes,
+    priorVotes,
+  };
 }
 
 export interface AlignmentSummary {
-  /** rounds where other people had already voted */
-  meaningful: number;
-  /** rounds where the browser picked the side with more real votes */
+  /** rounds with a winner, in either mode */
+  decided: number;
+  /** rounds where the browser picked the winner */
   agreed: number;
-  /** rounds where this browser cast the first real vote */
-  firstVotes: number;
+  crowdRounds: number;
+  crowdAgreed: number;
+  scoreRounds: number;
+  scoreAgreed: number;
+  /** rounds with no winner in either mode */
   ties: number;
 }
 
 export function alignmentSummary(records: readonly RoundRecord[]): AlignmentSummary {
   return records.reduce<AlignmentSummary>(
     (acc, record) => {
-      if (record.outcome.result === 'first_vote') acc.firstVotes += 1;
-      else {
-        acc.meaningful += 1;
-        if (record.outcome.result === 'agreed') acc.agreed += 1;
-        else if (record.outcome.result === 'tied') acc.ties += 1;
+      const { outcome } = record;
+      if (outcome.result === 'tied') {
+        acc.ties += 1;
+      } else {
+        acc.decided += 1;
+        if (outcome.result === 'agreed') acc.agreed += 1;
+      }
+      if (outcome.mode === 'crowd') {
+        acc.crowdRounds += 1;
+        if (outcome.result === 'agreed') acc.crowdAgreed += 1;
+      } else {
+        acc.scoreRounds += 1;
+        if (outcome.result === 'agreed') acc.scoreAgreed += 1;
       }
       return acc;
     },
-    { meaningful: 0, agreed: 0, firstVotes: 0, ties: 0 }
+    { decided: 0, agreed: 0, crowdRounds: 0, crowdAgreed: 0, scoreRounds: 0, scoreAgreed: 0, ties: 0 }
   );
 }
 
-export function alignmentTitle(agreed: number, meaningful: number): string {
-  if (meaningful <= 0) return 'no crowd to match yet';
-  const ratio = agreed / meaningful;
+export function alignmentTitle(agreed: number, decided: number): string {
+  if (decided <= 0) return 'no verdicts yet';
+  const ratio = agreed / decided;
   if (ratio >= 1) return 'lemon oracle';
   if (ratio >= 0.7) return 'crowd pleaser';
   if (ratio >= 0.4) return 'own taste';
   return 'certified contrarian';
 }
 
-export function isRoundPoint(outcome: RoundOutcome): boolean {
-  return outcome.result === 'agreed';
+export interface RevealView {
+  /** CSS class that colors the card overlay */
+  className: 'win' | 'lose' | 'tie';
+  label: string;
+  /** real crowd share, only in crowd mode; null means "no percentage" */
+  percent: number | null;
+  note: string | null;
+}
+
+/**
+ * Honest per-card overlay content. Percentages exist only for real crowd
+ * verdicts; the score fallback says so instead of inventing votes.
+ */
+export function revealFor(outcome: RoundOutcome, listingId: string): RevealView {
+  const className =
+    outcome.winnerId === null ? 'tie' : outcome.winnerId === listingId ? 'win' : 'lose';
+  const isPicked = outcome.picked === listingId;
+
+  if (outcome.mode === 'crowd') {
+    const votes = isPicked ? outcome.myVotes : outcome.otherVotes;
+    return {
+      className,
+      label: outcome.result === 'tied' ? 'tied vote' : 'crowd vote',
+      percent: votePercent(votes, outcome.myVotes + outcome.otherVotes),
+      note: outcome.result === 'tied' ? 'no majority' : isPicked ? 'you picked this' : null,
+    };
+  }
+
+  return {
+    className,
+    label:
+      outcome.result === 'tied'
+        ? 'score tie'
+        : outcome.winnerId === listingId
+          ? 'higher score'
+          : 'lower score',
+    percent: null,
+    note:
+      outcome.result === 'tied'
+        ? 'no crowd votes yet'
+        : isPicked
+          ? 'you picked this — by score'
+          : 'no crowd votes yet',
+  };
 }
