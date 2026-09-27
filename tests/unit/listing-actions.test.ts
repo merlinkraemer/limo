@@ -25,6 +25,7 @@ import {
   contributePhoto,
   createListing,
   fetchLeaderboard,
+  fetchMatchupResult,
   fetchMyRatings,
   rateListing,
   searchListingsAction,
@@ -202,6 +203,19 @@ describe('listing actions', () => {
 
     vi.mocked(getAllListingSummaries).mockRejectedValue(new Error('boom'));
     expect(await fetchLeaderboard()).toEqual({ ok: false, error: 'boom' });
+  });
+
+  it('fetchMatchupResult validates the pair and surfaces the aggregate or an error', async () => {
+    expect(await fetchMatchupResult(LISTING_ID, LISTING_ID)).toEqual({
+      ok: false,
+      error: 'Pick two different lemonades',
+    });
+
+    vi.mocked(getMatchupResult).mockResolvedValue(null);
+    expect(await fetchMatchupResult(LISTING_ID, OTHER_ID)).toEqual({ ok: true, result: null });
+
+    vi.mocked(getMatchupResult).mockRejectedValue(new Error('db down'));
+    expect(await fetchMatchupResult(LISTING_ID, OTHER_ID)).toEqual({ ok: false, error: 'db down' });
   });
 
   it('fetchMyRatings stays empty for a fresh browser', async () => {

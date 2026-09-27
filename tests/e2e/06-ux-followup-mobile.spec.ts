@@ -53,6 +53,37 @@ test.describe('ux follow-up (mobile)', () => {
     expect(await page.evaluate(() => document.documentElement.classList.contains('locked'))).toBe(false);
   });
 
+  test('panel touch-scrolls while the document stays locked (short viewport)', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 400 });
+    await page.goto('/');
+    const stamp = Date.now();
+    for (let i = 0; i < 5; i++) await createListingMobile(page, `E2E Touch ${stamp}-${i}`, 5);
+
+    await page.locator('.fab').click();
+    await page.locator('#add-q').fill('E2E Touch');
+    const panel = page.locator('.sheet-host:not(.detail) .panel');
+    await expect(panel).toBeVisible();
+    // Make sure there is something to scroll before gesturing.
+    await expect
+      .poll(() => panel.evaluate(el => el.scrollHeight - el.clientHeight))
+      .toBeGreaterThan(20);
+
+    // `touch-action: none` on the locked html/body used to swallow the pan.
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).touchAction)).not.toBe('none');
+
+    const box = (await panel.boundingBox())!;
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.synthesizeScrollGesture', {
+      x: Math.round(box.x + box.width / 2),
+      y: Math.round(box.y + Math.min(box.height - 30, 320)),
+      yDistance: -200,
+      speed: 700,
+      gestureSourceType: 'touch',
+    });
+    await expect.poll(() => panel.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  });
+
   test('sticky search + new-listing CTA stay pinned above the results', async ({ page }) => {
     await page.goto('/');
     await page.locator('.fab').click();

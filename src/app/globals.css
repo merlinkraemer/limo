@@ -88,7 +88,7 @@
 html, body { margin: 0; }
 body { background: var(--ground); color: var(--ink); font: 400 var(--fs-m)/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
 body.locked { overflow: hidden; }
-html.locked, body.locked { overflow: hidden !important; overscroll-behavior: none; touch-action: none; }
+html.locked, body.locked { overflow: hidden !important; overscroll-behavior: none; }
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; background: none; border: 0; padding: 0; text-align: inherit; }
 button:disabled { cursor: default; }
@@ -291,7 +291,7 @@ main.wrap { padding-top: var(--s4); padding-bottom: 112px; }
 .sheet-host.detail { z-index: 60; }
 .sheet-host[data-open="true"] { pointer-events: auto; }
 .scrim { position: absolute; inset: 0; background: rgba(43,34,34,.45); opacity: 0; transition: opacity var(--t-out); overscroll-behavior: none; }
-.panel { position: absolute; left: 50%; bottom: var(--app-keyboard-inset, 0px); width: min(560px, 100%); max-height: min(96dvh, var(--app-vh, 96dvh)); background: var(--ground); border: 1px solid var(--ink); border-bottom: 0; overflow-y: auto; overscroll-behavior: contain; transform: translate(-50%, 100%); transition: transform var(--t-out); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.panel { position: absolute; left: 50%; bottom: var(--app-keyboard-inset, 0px); width: min(560px, 100%); max-height: min(96dvh, var(--app-vh, 96dvh)); background: var(--ground); border: 1px solid var(--ink); border-bottom: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; transform: translate(-50%, 100%); transition: transform var(--t-out); padding-bottom: env(safe-area-inset-bottom, 0px); }
 .sheet-host[data-open="true"] .scrim { opacity: 1; transition: opacity var(--t-in); }
 .sheet-host[data-open="true"] .panel { transform: translate(-50%, 0); transition: transform var(--t-in); }
 @media (min-width: 768px) {

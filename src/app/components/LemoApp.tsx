@@ -8,6 +8,7 @@ import {
   castVote,
   contributePhoto,
   createListing,
+  fetchMatchupResult,
   fetchMyRatings,
   rateListing,
   searchListingsAction,
@@ -161,10 +162,20 @@ function Thumb({
  *  that fails keeps a labelled surface instead of a broken frame. */
 function LoadableImage({ onLoad, onError, ...props }: React.ComponentProps<typeof Image>) {
   const [state, setState] = useState<'loading' | 'loaded' | 'error'>('loading');
+  // A cached bitmap can already be complete when React attaches onLoad during
+  // hydration, so the native event never reaches us and the skeleton would
+  // stay on top of the photo. Settle from the element itself at mount. (A
+  // not-yet-started lazy load also reports complete with naturalWidth 0, so
+  // only a decoded bitmap may settle to loaded here; failures still come
+  // through the native onError.)
+  const settleCached = useCallback((node: HTMLImageElement | null) => {
+    if (node?.complete && node.naturalWidth > 0) setState('loaded');
+  }, []);
   return (
     <>
       <Image
         {...props}
+        ref={settleCached}
         data-photo-state={state}
         onLoad={event => {
           setState('loaded');
@@ -175,6 +186,11 @@ function LoadableImage({ onLoad, onError, ...props }: React.ComponentProps<typeo
           onError?.(event);
         }}
       />
+      {state === 'error' ? (
+        <span className="sr" role="status">
+          photo unavailable
+        </span>
+      ) : null}
       {state !== 'loaded' ? (
         <span className={`img-skeleton${state === 'error' ? ' is-error' : ''}`} aria-hidden="true">
           {state === 'error' ? 'photo unavailable' : null}
@@ -273,6 +289,9 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
   const [voting, setVoting] = useState(false);
   const [pendingPick, setPendingPick] = useState<string | null>(null);
   const [gameError, setGameError] = useState<string | null>(null);
+  // The vote is persisted but the post-vote aggregate read failed.
+  const [voteResultError, setVoteResultError] = useState(false);
+  const [retryingResult, setRetryingResult] = useState(false);
 
   const { register, unregister } = useLayerStack();
   const isDesktop = useMediaQuery('(min-width: 1024px)');
@@ -542,6 +561,8 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
     setHistory([]);
     setEndOpen(false);
     setGameError(null);
+    setVoteResultError(false);
+    setRetryingResult(false);
   }
 
   function startGame() {
@@ -552,6 +573,8 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
   function advance() {
     setPicked(null);
     setOutcome(null);
+    setVoteResultError(false);
+    setRetryingResult(false);
     if (round + 1 >= roundPairs.length) {
       setEndOpen(true);
     } else {
@@ -573,22 +596,52 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
       return;
     }
     const result = vote.result;
+    setPicked(listingId);
+    setPendingPick(null);
+    setVoting(false);
     if (!result) {
-      setGameError('could not load this matchup');
-      setVoting(false);
-      setPendingPick(null);
+      // The vote is stored; only reading the aggregate back failed. Keep the
+      // pick acknowledged and offer a retry instead of a misleading error.
+      setVoteResultError(true);
       return;
     }
+    setVoteResultError(false);
     const scoreFor = (id: string) => listingById.get(id)?.avg_score ?? null;
     const roundOutcome = outcomeFor(result, listingId, {
       a: scoreFor(result.lemonade_a),
       b: scoreFor(result.lemonade_b),
     });
-    setPicked(listingId);
-    setPendingPick(null);
     setOutcome(roundOutcome);
     setHistory(records => [...records, { round, picked: listingId, outcome: roundOutcome }]);
-    setVoting(false);
+    requestAnimationFrame(() => {
+      gameRef.current?.querySelector<HTMLElement>('[data-act="game-had-it"]')?.focus({ preventScroll: true });
+    });
+  }
+
+  /** Re-read the aggregate for the already-persisted vote, without re-voting. */
+  async function retryVoteResult() {
+    if (!pair || !picked || retryingResult) return;
+    setRetryingResult(true);
+    setGameError(null);
+    const retry = await fetchMatchupResult(pair.a, pair.b);
+    setRetryingResult(false);
+    if (!retry.ok) {
+      setGameError(retry.error);
+      return;
+    }
+    const result = retry.result;
+    if (!result) {
+      setGameError('could not load this matchup');
+      return;
+    }
+    const scoreFor = (id: string) => listingById.get(id)?.avg_score ?? null;
+    const roundOutcome = outcomeFor(result, picked, {
+      a: scoreFor(result.lemonade_a),
+      b: scoreFor(result.lemonade_b),
+    });
+    setVoteResultError(false);
+    setOutcome(roundOutcome);
+    setHistory(records => [...records, { round, picked, outcome: roundOutcome }]);
     requestAnimationFrame(() => {
       gameRef.current?.querySelector<HTMLElement>('[data-act="game-had-it"]')?.focus({ preventScroll: true });
     });
@@ -841,7 +894,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
             </button>
           </div>
           <div className="od-scroll">
-            <div className={`layer-body${picked && outcome ? ' has-followup' : ''}`}>
+            <div className={`layer-body${picked && (outcome || voteResultError) ? ' has-followup' : ''}`}>
               {roundPairs.length === 0 ? (
                 <div className="game-empty">
                   <p className="note">not enough lemonades to play yet — add two first!</p>
@@ -883,13 +936,33 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                     })}
                   </ol>
                   {cardA ? renderGameCard(cardA, 'left') : null}
-                  <div className={`or${picked && outcome ? ' has-followup' : ''}`}>
+                  <div className={`or${picked && (outcome || voteResultError) ? ' has-followup' : ''}`}>
                     {picked && outcome ? (
                       <>
                         <p className="game-followup-copy">did you drink this?</p>
                         <div className="game-followup-actions">
                           <button type="button" className="btn" data-act="game-had-it" data-first onClick={() => openAdd(picked, { returnTo: 'game' })}>
                             yes
+                          </button>
+                          <button type="button" className="btn btn-ghost" onClick={advance}>
+                            next!
+                          </button>
+                        </div>
+                      </>
+                    ) : picked && voteResultError ? (
+                      <>
+                        <p className="game-followup-copy" role="status">
+                          vote saved — result unavailable
+                        </p>
+                        <div className="game-followup-actions">
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => void retryVoteResult()}
+                            disabled={retryingResult}
+                            aria-busy={retryingResult || undefined}
+                          >
+                            {retryingResult ? 'retrying…' : 'retry'}
                           </button>
                           <button type="button" className="btn btn-ghost" onClick={advance}>
                             next!

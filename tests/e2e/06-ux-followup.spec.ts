@@ -168,6 +168,28 @@ test.describe('ux follow-up (desktop)', () => {
     await expect.poll(() => page.locator('.game-warm').getAttribute('data-warm-ids')).not.toBe(before);
   });
 
+  test('cached images settle without waiting for a post-hydration load event', async ({ page }) => {
+    await attachImagesToAllListings(await e2eImageUrl());
+
+    // Warm the page and the bitmap in the browser cache.
+    await page.goto('/');
+    const row = page.locator('.board li').first();
+    await expect(row.locator('img')).toHaveAttribute('data-photo-state', 'loaded');
+
+    // Hold the client bundle back so the cached bitmap is complete before
+    // hydration gets a chance to attach React's onLoad. Routing also disables
+    // the HTTP cache, so the delayed chunk is really fetched from the server.
+    await page.route('**/_next/static/**', async route => {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      await route.continue();
+    });
+    await page.reload();
+    await expect(row.locator('img')).toHaveAttribute('data-photo-state', 'loaded', {
+      timeout: 20000,
+    });
+    await expect(row.locator('.img-skeleton')).toHaveCount(0);
+  });
+
   test('respects Data Saver: no prewarm when saveData is on', async ({ page }) => {
     const imageUrl = await e2eImageUrl();
     await attachImagesToAllListings(imageUrl);
