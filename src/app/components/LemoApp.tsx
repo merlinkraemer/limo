@@ -17,6 +17,7 @@ import { uploadImage } from '@/lib/supabase/storage';
 import { assignRanks, ratingLabel } from '@/lib/listing-metrics';
 import {
   GAME_ROUNDS,
+  alignmentNote,
   alignmentSummary,
   alignmentTitle,
   buildPairs,
@@ -1371,21 +1372,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                   <small>/{alignment.decided}</small>
                 </p>
                 <p className="ttl">{alignmentTitle(alignment.agreed, alignment.decided)}</p>
-                <p>
-                  {alignment.crowdRounds > 0
-                    ? `you matched the crowd in ${alignment.crowdAgreed} of ${alignment.crowdRounds} matchup${alignment.crowdRounds === 1 ? '' : 's'} with real votes`
-                    : 'no crowd voted yet — every call came down to the listed scores'}
-                  {alignment.scoreRounds > 0 ? (
-                    <>
-                      {alignment.crowdRounds > 0 ? '; ' : ''}
-                      you picked the higher score in {alignment.scoreAgreed} of {alignment.scoreRounds}{' '}
-                      score-fallback matchup{alignment.scoreRounds === 1 ? '' : 's'}
-                    </>
-                  ) : null}
-                  {alignment.ties > 0
-                    ? `, with ${alignment.ties} neutral tie${alignment.ties === 1 ? '' : 's'}.`
-                    : '.'}
-                </p>
+                <p>{alignmentNote(alignment)}</p>
               </>
             ) : (
               <>
@@ -1429,6 +1416,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
               <div className="card-lightbox-photo">
                 {lightboxListing.image_url ? (
                   <Image
+                    className="od-media"
                     src={lightboxListing.image_url}
                     alt={`photo of ${lightboxListing.name}`}
                     width={900}

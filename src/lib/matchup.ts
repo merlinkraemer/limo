@@ -188,6 +188,29 @@ export function alignmentTitle(agreed: number, decided: number): string {
   return 'certified contrarian';
 }
 
+/**
+ * End-screen sentence for a finished game. The crowd and score-fallback
+ * tallies are always separated, so a score-only session never produces
+ * "...listed scoresyou picked...".
+ */
+export function alignmentNote(alignment: AlignmentSummary): string {
+  const parts: string[] = [
+    alignment.crowdRounds > 0
+      ? `you matched the crowd in ${alignment.crowdAgreed} of ${alignment.crowdRounds} matchup${alignment.crowdRounds === 1 ? '' : 's'} with real votes`
+      : 'no crowd voted yet — every call came down to the listed scores',
+  ];
+
+  if (alignment.scoreRounds > 0) {
+    parts.push(
+      `you picked the higher score in ${alignment.scoreAgreed} of ${alignment.scoreRounds} score-fallback matchup${alignment.scoreRounds === 1 ? '' : 's'}`
+    );
+  }
+
+  const ties =
+    alignment.ties > 0 ? `, with ${alignment.ties} neutral tie${alignment.ties === 1 ? '' : 's'}.` : '.';
+  return parts.join('; ') + ties;
+}
+
 export interface RevealView {
   /** CSS class that colors the card overlay */
   className: 'win' | 'lose' | 'tie';

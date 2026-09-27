@@ -197,7 +197,7 @@ main.wrap { padding-top: var(--s4); padding-bottom: 112px; }
 .squares li { aspect-ratio: 1; border: 1px solid var(--ink); display: grid; place-items: center; font: 600 var(--fs-s)/1 var(--mono); color: var(--ink); background: var(--card); }
 .squares li.hit { background: var(--hit); border-color: var(--hit); color: #fff; }
 .squares li.miss { background: var(--miss); border-color: var(--miss); color: #fff; }
-.squares li:not(.hit):not(.miss):not(.now) { opacity: .45; }
+.squares li:not(.hit):not(.miss):not(.tie):not(.now) { opacity: .45; }
 .squares li.tie { background: var(--card); border-color: var(--ink); color: var(--muted); }
 .squares li.now { outline: 2px solid var(--accent); outline-offset: 1px; }
 

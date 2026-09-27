@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CROWD_MIN_VOTES,
+  alignmentNote,
   alignmentSummary,
   alignmentTitle,
   buildPairs,
@@ -223,5 +224,52 @@ describe('alignmentSummary', () => {
 
   it('has no title-worthy score when nothing was decided', () => {
     expect(alignmentTitle(0, 0)).toBe('no verdicts yet');
+  });
+});
+
+describe('alignmentNote', () => {
+  it('separates crowd and score tallies', () => {
+    const note = alignmentNote({
+      decided: 4,
+      agreed: 3,
+      crowdRounds: 4,
+      crowdAgreed: 2,
+      scoreRounds: 0,
+      scoreAgreed: 0,
+      ties: 0,
+    });
+
+    expect(note).toBe('you matched the crowd in 2 of 4 matchups with real votes.');
+  });
+
+  it('keeps score-only sessions readable instead of gluing "scoresyou"', () => {
+    const note = alignmentNote({
+      decided: 3,
+      agreed: 2,
+      crowdRounds: 0,
+      crowdAgreed: 0,
+      scoreRounds: 4,
+      scoreAgreed: 2,
+      ties: 1,
+    });
+
+    expect(note).not.toContain('scoresyou');
+    expect(note).toBe(
+      'no crowd voted yet — every call came down to the listed scores; you picked the higher score in 2 of 4 score-fallback matchups, with 1 neutral tie.'
+    );
+  });
+
+  it('reports a single score-fallback matchup in the singular', () => {
+    const note = alignmentNote({
+      decided: 1,
+      agreed: 1,
+      crowdRounds: 0,
+      crowdAgreed: 0,
+      scoreRounds: 1,
+      scoreAgreed: 1,
+      ties: 0,
+    });
+
+    expect(note).toContain('in 1 of 1 score-fallback matchup.');
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_CLOUDINARY_CLOUD,
+  DEV_SEED_IMAGES_PATH,
   STORAGE_PUBLIC_PATH,
   buildRemotePatterns,
 } from '@/lib/image-hosts';
@@ -64,5 +65,24 @@ describe('buildRemotePatterns', () => {
     expect(cloudinary).toEqual([
       { protocol: 'https', hostname: 'res.cloudinary.com', pathname: '/only-this-cloud/**' },
     ]);
+  });
+
+  it('never allows the seed photo host by default', () => {
+    const patterns = buildRemotePatterns({
+      NEXT_PUBLIC_SUPABASE_URL: 'https://mpbpzxkttsqmsaazxbkk.supabase.co',
+    });
+
+    expect(patterns.some(pattern => pattern.hostname === 'images.pexels.com')).toBe(false);
+  });
+
+  it('allows the seed photo host only when explicitly enabled for local dev', () => {
+    const patterns = buildRemotePatterns({}, { allowDevSeedImages: true });
+
+    expect(patterns).toContainEqual({
+      protocol: 'https',
+      hostname: 'images.pexels.com',
+      pathname: DEV_SEED_IMAGES_PATH,
+    });
+    expect(DEV_SEED_IMAGES_PATH).toBe('/photos/**');
   });
 });

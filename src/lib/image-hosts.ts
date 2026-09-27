@@ -11,6 +11,9 @@
 
 export const STORAGE_PUBLIC_PATH = '/storage/v1/object/public/**';
 
+/** Sample photos in `supabase/seed.sql` (local development only). */
+export const DEV_SEED_IMAGES_PATH = '/photos/**';
+
 /** Deployed Supabase projects; URLs already in the database must keep working. */
 export const TRUSTED_SUPABASE_HOSTS = [
   'mpbpzxkttsqmsaazxbkk.supabase.co', // production
@@ -24,6 +27,14 @@ export interface ImageHostEnv {
   NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME?: string;
 }
 
+export interface ImageHostOptions {
+  /**
+   * `supabase/seed.sql` stores sample photos on Pexels. Only local development
+   * loads that seed, so the host must never join the production allow-list.
+   */
+  allowDevSeedImages?: boolean;
+}
+
 export interface RemotePattern {
   protocol: 'http' | 'https';
   hostname: string;
@@ -35,7 +46,7 @@ function patternKey(pattern: RemotePattern): string {
   return `${pattern.protocol}://${pattern.hostname}:${pattern.port ?? ''}${pattern.pathname}`;
 }
 
-export function buildRemotePatterns(env: ImageHostEnv): RemotePattern[] {
+export function buildRemotePatterns(env: ImageHostEnv, options: ImageHostOptions = {}): RemotePattern[] {
   const patterns: RemotePattern[] = [];
 
   for (const hostname of TRUSTED_SUPABASE_HOSTS) {
@@ -64,6 +75,10 @@ export function buildRemotePatterns(env: ImageHostEnv): RemotePattern[] {
     { protocol: 'http', hostname: '127.0.0.1', port: '54321', pathname: STORAGE_PUBLIC_PATH },
     { protocol: 'http', hostname: 'localhost', port: '54321', pathname: STORAGE_PUBLIC_PATH }
   );
+
+  if (options.allowDevSeedImages) {
+    patterns.push({ protocol: 'https', hostname: 'images.pexels.com', pathname: DEV_SEED_IMAGES_PATH });
+  }
 
   const cloudName = env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME?.trim() || DEFAULT_CLOUDINARY_CLOUD;
   patterns.push({ protocol: 'https', hostname: 'res.cloudinary.com', pathname: `/${cloudName}/**` });

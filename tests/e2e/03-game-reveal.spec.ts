@@ -99,6 +99,10 @@ test.describe('game reveal modes', () => {
     await expect(page4.locator('.card-wrap[data-card-position="right"] .reveal')).toHaveClass(/\btie\b/);
     await expect(page4.locator('.reveal .pct').first()).toHaveText('50,0%');
     await expect(page4.locator('.reveal .lab').first()).toHaveText('tied vote');
+    // A neutral tie is a decided round, not an unborn one: its square stays
+    // fully opaque instead of the dimmed "future round" treatment.
+    await expect(page4.locator('.squares li').first()).toHaveClass(/\btie\b/);
+    await expect(page4.locator('.squares li').first()).toHaveCSS('opacity', '1');
     await ctx4.close();
   });
 });
