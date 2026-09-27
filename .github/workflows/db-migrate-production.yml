@@ -1,0 +1,727 @@
+name: db-migrate-production
+
+# PRODUCTION Supabase migration runner for 007-009. DANGEROUS, ONE-SHOT,
+# FAIL-CLOSED.
+#
+# This is the only workflow in the repo allowed to write to the production
+# project mpbpzxkttsqmsaazxbkk. It lives on the isolated `drill/prod-migrate`
+# branch and is never merged into `staging`/`main`; pushing this file to that
+# branch is the deliberate "go" signal that runs it (a push anywhere else, or
+# of anything else, does not). Do not push the branch before the rollout is
+# approved.
+#
+# Gate order - nothing writes to production unless every gate passes:
+#   1. exact ref: refs/heads/drill/prod-migrate only (job guard + step guard).
+#   2. local migration set is exactly 001-004 + 007-009, and 007/008/009 match
+#      the sha256 of the bytes already applied to staging (run 36246209060).
+#   3. the encrypted backup artifact prod-backup-drill-36299212401 exists, is
+#      not expired, belongs to a successful drill/prod-backup run, its
+#      snapshot-report matches the expected 50/48/001-004 snapshot, and the
+#      inner prod.dump.enc matches the verified custody sha256.
+#   4. read-only production pre-flight (PGOPTIONS=-c
+#      default_transaction_read_only=on): 50 rows / 48 image_url / pinned image
+#      and full-row md5 / 50 historical rows / 2 Twister rows / 1 duplicate
+#      name group / remote history exactly 001-004 / no 007-009 objects.
+#   5. supabase link to the hardcoded production ref, then re-read
+#      supabase/.temp/project-ref and refuse a mismatch.
+#   6. supabase migration list --linked parses to remote exactly 001-004 and
+#      pending (local minus remote) exactly 007,008,009.
+#   7. supabase db push --linked --dry-run lists exactly 007,008,009.
+# Only then `supabase db push --linked --yes` (no --include-all).
+# Post-asserts: 49 canonical rows, 1 merged Twister alias (03134887 winner),
+# 49 legacy ratings matching flavor*0.65+sourness*0.35, 48 image URLs with
+# unchanged image hash, listing_summaries=49 with consistent aggregates, the
+# 9 functions from 008, RLS on ratings/votes, anon write grants absent, legacy
+# storage write policies gone, remote history exactly 001-004+007-009.
+#
+# Secrets are never echoed: no `set -x`, no connection strings, no password in
+# any log line. There is no rollback step - migrations are forward-only; if a
+# post-assert fails the fix is a reviewed forward migration.
+
+on:
+  push:
+    branches: [drill/prod-migrate]
+    paths:
+      - '.github/workflows/db-migrate-production.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+# Serialize production migration runs; never cancel one mid-flight.
+concurrency:
+  group: supabase-migrations-production
+  cancel-in-progress: false
+
+jobs:
+  migrate-production:
+    if: github.ref == 'refs/heads/drill/prod-migrate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PROD_PROJECT_REF: mpbpzxkttsqmsaazxbkk
+      PROD_BACKUP_RUN_ID: '36299212401'
+      PROD_BACKUP_ARTIFACT: prod-backup-drill-36299212401
+      PROD_DUMP_ENC_SHA256: '6a48705fe20bda533fd2f82ad5c871042b1446b55aa9cb978372491dbc093548'
+      PROD_MIGRATE_SHA256_007: 'e0c7811f4cf5170d27ad3336801df70d5dc1ba84f2ed7c4b9a75bc9a42ef202d'
+      PROD_MIGRATE_SHA256_008: '69e80a7cfcb30384d0d0ff48d789f942ac0552fa225b36f80ee0ba3905935ed3'
+      PROD_MIGRATE_SHA256_009: '6b5dfa4a7f0986cbcf8e3e13b56ee12cd0f213a4d0465d919a29a24d26fadf1f'
+      PGCLIENTENCODING: UTF8
+    steps:
+      - name: Refuse to run outside the isolated production migration branch
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF}" != "refs/heads/drill/prod-migrate" ]; then
+            echo "::error::Refusing to run: expected refs/heads/drill/prod-migrate, got ${GITHUB_REF}"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: supabase/setup-cli@v1
+        with:
+          # Pinned to the CLI release that was `latest` when staging applied
+          # 007-009 (2026-09-27); do not float this on a production runner.
+          version: 2.118.0
+
+      - name: Install PostgreSQL 17 client
+        run: |
+          set -euo pipefail
+          if [ ! -x /usr/lib/postgresql/17/bin/psql ]; then
+            sudo install -d /usr/share/postgresql-common/pgdg
+            curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+              | sudo gpg --batch --yes --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
+            . /etc/os-release
+            echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /tmp/pgdg.list
+            sudo mv /tmp/pgdg.list /etc/apt/sources.list.d/pgdg.list
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client-17
+          fi
+          echo "psql_path=$(command -v psql)"
+          /usr/lib/postgresql/17/bin/psql --version
+          sudo ln -sf /usr/lib/postgresql/17/bin/psql /usr/local/bin/psql
+
+      - name: Validate local migration set and pinned migration bytes
+        run: |
+          set -euo pipefail
+          expected="001_create_lemonades_table.sql 002_create_limo_images_bucket.sql 003_weighted_overall_score.sql 004_add_added_by_column.sql 007_ratings_merges_and_votes.sql 008_rating_rpcs_and_read_models.sql 009_lock_down_legacy_storage_writes.sql"
+          actual="$(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -exec basename {} \; | sort | paste -sd' ' -)"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::supabase/migrations must contain exactly: $expected"
+            echo "::error::found: $actual"
+            exit 1
+          fi
+          echo "${PROD_MIGRATE_SHA256_007}  supabase/migrations/007_ratings_merges_and_votes.sql" | sha256sum -c -
+          echo "${PROD_MIGRATE_SHA256_008}  supabase/migrations/008_rating_rpcs_and_read_models.sql" | sha256sum -c -
+          echo "${PROD_MIGRATE_SHA256_009}  supabase/migrations/009_lock_down_legacy_storage_writes.sql" | sha256sum -c -
+          echo "migration_set_and_hashes_ok"
+
+      - name: Verify encrypted production backup artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PROD_BACKUP_RUN_ID}")"
+          conclusion="$(jq -r '.conclusion' <<<"$run_json")"
+          head_branch="$(jq -r '.head_branch' <<<"$run_json")"
+          if [ "$conclusion" != "success" ] || [ "$head_branch" != "drill/prod-backup" ]; then
+            echo "::error::backup run ${PROD_BACKUP_RUN_ID} is not a successful drill/prod-backup run (conclusion=${conclusion}, branch=${head_branch})"
+            exit 1
+          fi
+          art_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PROD_BACKUP_RUN_ID}/artifacts")"
+          art_id="$(jq -r --arg n "$PROD_BACKUP_ARTIFACT" '.artifacts[] | select(.name == $n) | .id' <<<"$art_json")"
+          art_expired="$(jq -r --arg n "$PROD_BACKUP_ARTIFACT" '.artifacts[] | select(.name == $n) | .expired' <<<"$art_json")"
+          art_created="$(jq -r --arg n "$PROD_BACKUP_ARTIFACT" '.artifacts[] | select(.name == $n) | .created_at' <<<"$art_json")"
+          if [ -z "$art_id" ] || [ "$art_id" = "null" ]; then
+            echo "::error::backup artifact ${PROD_BACKUP_ARTIFACT} not found in run ${PROD_BACKUP_RUN_ID}; re-run the backup drill and update the pins"
+            exit 1
+          fi
+          if [ "$art_expired" != "false" ]; then
+            echo "::error::backup artifact ${PROD_BACKUP_ARTIFACT} has expired; re-run the backup drill and update the pins"
+            exit 1
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${art_id}/zip" > out/prod-backup.zip
+          unzip -o -q out/prod-backup.zip -d out/prod-backup
+          # Inner checksum sidecar produced on the backup runner.
+          ( cd out/prod-backup && grep -E '^[0-9a-f]{64}  prod\.dump\.enc$' SHA256SUMS | sha256sum -c - )
+          # The encrypted dump must equal the independently verified custody copy.
+          actual_sha="$(sha256sum out/prod-backup/prod.dump.enc | cut -d' ' -f1)"
+          if [ "$actual_sha" != "$PROD_DUMP_ENC_SHA256" ]; then
+            echo "::error::prod.dump.enc sha256 ${actual_sha} does not match the verified custody hash ${PROD_DUMP_ENC_SHA256}"
+            exit 1
+          fi
+          # The snapshot the dump was taken from must be the 50/48/001-004 state.
+          for expect in 'lemonades_total=50' 'lemonades_with_image_url=48'; do
+            if ! grep -qx "$expect" out/prod-backup/snapshot-report.txt; then
+              echo "::error::backup snapshot report is missing expected line: ${expect}"
+              exit 1
+            fi
+          done
+          snap_migrations="$(grep -E '^[0-9]{3}\|' out/prod-backup/snapshot-report.txt | cut -d'|' -f1 | sort | paste -sd, -)"
+          if [ "$snap_migrations" != "001,002,003,004" ]; then
+            echo "::error::backup snapshot migrations [${snap_migrations}] are not exactly 001,002,003,004"
+            exit 1
+          fi
+          {
+            echo "backup_artifact=${PROD_BACKUP_ARTIFACT}"
+            echo "backup_run=${PROD_BACKUP_RUN_ID}"
+            echo "backup_artifact_created_at=${art_created}"
+            echo "backup_dump_enc_sha256=${PROD_DUMP_ENC_SHA256}"
+          } > out/backup-check.txt
+          cat out/backup-check.txt
+
+      - name: Resolve a reachable production host (read-only Management API)
+        id: resolve
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROD_DB_PASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN repository secret is EMPTY."
+            exit 1
+          fi
+          if [ -z "$PROD_DB_PASSWORD" ]; then
+            echo "::error::SUPABASE_PRODUCTION_DB_PASSWORD repository secret is EMPTY."
+            exit 1
+          fi
+          api="https://api.supabase.com/v1/projects/${PROD_PROJECT_REF}"
+          curl -fsS -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" "$api" -o out/project.json
+          echo "project_status=$(jq -r '.status' out/project.json) project_region=$(jq -r '.region' out/project.json)"
+          # Session-mode pooler hosts are IPv4; the direct db.<ref> host is
+          # IPv6-only on this project, which GitHub-hosted runners cannot reach.
+          api_host=""
+          if curl -fsS -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+               "https://api.supabase.com/v1/projects/${PROD_PROJECT_REF}/config/database/pooler" \
+               -o out/pooler.json 2>/dev/null; then
+            api_host="$(jq -r 'if type == "array" then (.[0].db_host // empty) else (.db_host // empty) end' out/pooler.json)"
+          fi
+          {
+            [ -n "$api_host" ] && echo "${api_host}|5432|postgres.${PROD_PROJECT_REF}|pooler-api"
+            echo "aws-1-eu-west-1.pooler.supabase.com|5432|postgres.${PROD_PROJECT_REF}|pooler-aws1"
+            echo "aws-0-eu-west-1.pooler.supabase.com|5432|postgres.${PROD_PROJECT_REF}|pooler-aws0"
+            echo "db.${PROD_PROJECT_REF}.supabase.co|5432|postgres|direct-ipv6"
+          } | sort -u > out/candidates.txt
+          : > out/connection-test.log
+          trimmed="$(printf '%s' "$PROD_DB_PASSWORD")"
+          host=""; port=""; user=""; mode=""
+          try_conn() {
+            local h="$1" p="$2" u="$3" label="$4" pw="$5" m="$6"
+            echo "trying ${label} [${m}]: ${h}:${p}"
+            if PGPASSWORD="$pw" PGCONNECT_TIMEOUT=15 \
+                 psql -X -w -tA "host=${h} port=${p} dbname=postgres user=${u} sslmode=require connect_timeout=15" \
+                 -c 'select 1' >/dev/null 2>>out/connection-test.log; then
+              host="$h"; port="$p"; user="$u"; mode="$m"
+              return 0
+            fi
+            return 1
+          }
+          while IFS='|' read -r h p u label; do
+            [ -n "$h" ] || continue
+            if try_conn "$h" "$p" "$u" "$label" "$PROD_DB_PASSWORD" raw; then break; fi
+            if [ "$trimmed" != "$PROD_DB_PASSWORD" ]; then
+              if try_conn "$h" "$p" "$u" "$label" "$trimmed" trimmed; then break; fi
+            fi
+          done < out/candidates.txt
+          if [ -z "$host" ]; then
+            echo "::error::Production DB connection failed on every candidate host (stale SUPABASE_PRODUCTION_DB_PASSWORD or unreachable pooler?)."
+            tail -n 20 out/connection-test.log
+            exit 1
+          fi
+          echo "connected via ${host}:${port} (password_mode=${mode})"
+          {
+            echo "host=${host}"
+            echo "port=${port}"
+            echo "user=${user}"
+            echo "password_mode=${mode}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Read-only production pre-flight (fails closed on any drift)
+        env:
+          PROD_DB_PASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+          PGOPTIONS: -c default_transaction_read_only=on
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.resolve.outputs.password_mode }}" = "trimmed" ]; then
+            PGPASSWORD="$(printf '%s' "$PROD_DB_PASSWORD")"
+          else
+            PGPASSWORD="$PROD_DB_PASSWORD"
+          fi
+          export PGPASSWORD
+          CONN="host=${{ steps.resolve.outputs.host }} port=${{ steps.resolve.outputs.port }} dbname=postgres user=${{ steps.resolve.outputs.user }} sslmode=require connect_timeout=15"
+          cat > out/preflight.sql <<'SQL'
+          \set ON_ERROR_STOP on
+
+          select 'preflight_lemonades_total=' || count(*) from public.lemonades;
+          select 'preflight_lemonades_with_image_url=' || count(*) from public.lemonades
+           where nullif(btrim(image_url), '') is not null;
+          select 'preflight_lemonades_historical_rows=' || count(*) from public.lemonades
+           where flavor_rating is not null and sourness_rating is not null;
+          select 'preflight_twister_rows=' || count(*) from public.lemonades
+           where lower(btrim(name)) = 'twister soda trai cay';
+          select 'preflight_canonical_duplicate_name_groups=' || count(*) from (
+            select lower(btrim(name)) from public.lemonades group by 1 having count(*) > 1
+          ) as d;
+          select 'preflight_image_hash=' || coalesce(md5(string_agg(id::text || '|' || image_url, ',' order by id)), 'none')
+            from public.lemonades where nullif(btrim(image_url), '') is not null;
+          select 'preflight_full_row_hash=' || md5(string_agg(
+            id::text||'|'||name||'|'||coalesce(image_url,'<null>')||'|'||
+            coalesce(flavor_rating::text,'<null>')||'|'||coalesce(sourness_rating::text,'<null>')||'|'||
+            description||'|'||coalesce(location_city,'<null>')||'|'||coalesce(added_by,'<null>'),
+            ',' order by id)) from public.lemonades;
+          select 'preflight_applied_migrations=' || coalesce(string_agg(version, ',' order by version), 'none')
+            from supabase_migrations.schema_migrations;
+
+          do $preflight$
+          declare
+            v_total bigint;
+            v_image bigint;
+            v_hist bigint;
+            v_twister bigint;
+            v_dup_groups bigint;
+            v_image_hash text;
+            v_full_row_hash text;
+            v_migrations text;
+          begin
+            if to_regclass('public.lemonade_ratings') is not null
+               or to_regclass('public.matchup_votes') is not null
+               or to_regclass('public.listing_summaries') is not null then
+              raise exception 'preflight refused: a 007/008 relation already exists';
+            end if;
+            if exists (
+              select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'lemonades'
+                 and column_name in ('merged_into', 'merge_reason')
+            ) then
+              raise exception 'preflight refused: lemonades already has the merge columns';
+            end if;
+
+            select count(*) into v_total from public.lemonades;
+            if v_total <> 50 then
+              raise exception 'preflight failed: lemonades has % rows, backup snapshot has 50 (production drifted; take a fresh backup and update the pins)', v_total;
+            end if;
+
+            select count(*) into v_image from public.lemonades
+             where nullif(btrim(image_url), '') is not null;
+            if v_image <> 48 then
+              raise exception 'preflight failed: % rows have image_url, backup snapshot has 48', v_image;
+            end if;
+
+            select coalesce(md5(string_agg(id::text || '|' || image_url, ',' order by id)), 'none')
+              into v_image_hash
+              from public.lemonades where nullif(btrim(image_url), '') is not null;
+            if v_image_hash <> '911c79abda4cd159cf12a82fcd705d6a' then
+              raise exception 'preflight failed: image hash % <> snapshot 911c79abda4cd159cf12a82fcd705d6a', v_image_hash;
+            end if;
+
+            select md5(string_agg(
+              id::text||'|'||name||'|'||coalesce(image_url,'<null>')||'|'||
+              coalesce(flavor_rating::text,'<null>')||'|'||coalesce(sourness_rating::text,'<null>')||'|'||
+              description||'|'||coalesce(location_city,'<null>')||'|'||coalesce(added_by,'<null>'),
+              ',' order by id)) into v_full_row_hash from public.lemonades;
+            if v_full_row_hash <> 'd8ac93d7b362193a3075ce353a1fc660' then
+              raise exception 'preflight failed: full-row hash % <> snapshot d8ac93d7b362193a3075ce353a1fc660', v_full_row_hash;
+            end if;
+
+            select count(*) into v_hist from public.lemonades
+             where flavor_rating is not null and sourness_rating is not null;
+            if v_hist <> 50 then
+              raise exception 'preflight failed: % historical rows, backup snapshot has 50', v_hist;
+            end if;
+
+            select count(*) into v_twister from public.lemonades
+             where lower(btrim(name)) = 'twister soda trai cay';
+            if v_twister <> 2 then
+              raise exception 'preflight failed: % Twister rows, expected 2', v_twister;
+            end if;
+            if not exists (
+              select 1 from public.lemonades
+               where left(id::text, 8) = '03134887'
+                 and lower(btrim(name)) = 'twister soda trai cay'
+                 and nullif(btrim(image_url), '') is not null
+            ) then
+              raise exception 'preflight failed: Twister canonical row 03134887 is missing its photo';
+            end if;
+            if not exists (
+              select 1 from public.lemonades
+               where left(id::text, 8) = '0c0cd8a0'
+                 and lower(btrim(name)) = 'twister soda trai cay'
+                 and nullif(btrim(image_url), '') is null
+            ) then
+              raise exception 'preflight failed: Twister alias row 0c0cd8a0 is missing or already holds a photo';
+            end if;
+
+            select count(*) into v_dup_groups from (
+              select lower(btrim(name)) from public.lemonades group by 1 having count(*) > 1
+            ) as d;
+            if v_dup_groups <> 1 then
+              raise exception 'preflight failed: % duplicate-name groups, snapshot has exactly 1', v_dup_groups;
+            end if;
+
+            select coalesce(string_agg(version, ',' order by version), 'none') into v_migrations
+              from supabase_migrations.schema_migrations;
+            if v_migrations <> '001,002,003,004' then
+              raise exception 'preflight failed: remote history [%] must be exactly 001,002,003,004', v_migrations;
+            end if;
+
+            raise notice 'preflight PASS: production matches the verified backup snapshot';
+          end
+          $preflight$;
+          SQL
+          if ! psql "$CONN" -X -w -v ON_ERROR_STOP=1 -tA -f out/preflight.sql | tee out/preflight-facts.txt; then
+            echo "::error::production pre-flight failed; no migration was attempted"
+            exit 1
+          fi
+
+      - name: Link production project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "::error::SUPABASE_ACCESS_TOKEN repository secret is EMPTY."; exit 1; }
+          test -n "$SUPABASE_DB_PASSWORD" || { echo "::error::SUPABASE_PRODUCTION_DB_PASSWORD repository secret is EMPTY."; exit 1; }
+          supabase link --project-ref "$PROD_PROJECT_REF" -p "$SUPABASE_DB_PASSWORD"
+
+      - name: Guard linked project ref is production
+        run: |
+          set -euo pipefail
+          linked="$(cat supabase/.temp/project-ref)"
+          if [ "$linked" != "$PROD_PROJECT_REF" ]; then
+            echo "::error::Refusing to push: linked project '${linked}' is not the production project '${PROD_PROJECT_REF}'"
+            exit 1
+          fi
+          echo "linked_project_ref=${linked}"
+
+      - name: Pending migrations must be exactly 007-009
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if ! supabase migration list --linked > out/migration-list.txt 2>&1; then
+            echo "::error::supabase migration list --linked failed"
+            cat out/migration-list.txt
+            exit 1
+          fi
+          cat out/migration-list.txt
+          local_set="$(awk -F'|' '{ if (NF < 3) next; l=$1; gsub(/[^0-9]/, "", l); if (l != "") print l }' out/migration-list.txt | sort -u | paste -sd, -)"
+          remote_set="$(awk -F'|' '{ if (NF < 3) next; r=$2; gsub(/[^0-9]/, "", r); if (r != "") print r }' out/migration-list.txt | sort -u | paste -sd, -)"
+          if [ "$local_set" != "001,002,003,004,007,008,009" ]; then
+            echo "::error::local migrations [${local_set}] are not exactly 001,002,003,004,007,008,009"
+            exit 1
+          fi
+          if [ "$remote_set" != "001,002,003,004" ]; then
+            echo "::error::remote history [${remote_set}] is not exactly 001,002,003,004"
+            exit 1
+          fi
+          pending="$(comm -23 <(printf '%s\n' "$local_set" | tr ',' '\n' | sort) <(printf '%s\n' "$remote_set" | tr ',' '\n' | sort) | paste -sd, -)"
+          if [ "$pending" != "007,008,009" ]; then
+            echo "::error::pending migrations [${pending}] are not exactly 007,008,009"
+            exit 1
+          fi
+          echo "remote_history=${remote_set} pending=${pending}"
+
+      - name: Dry-run must list exactly 007-009
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if ! supabase db push --linked --dry-run --yes > out/db-push-dry-run.stdout 2> out/db-push-dry-run.stderr; then
+            echo "::error::supabase db push --dry-run failed"
+            cat out/db-push-dry-run.stdout
+            cat out/db-push-dry-run.stderr >&2
+            exit 1
+          fi
+          cat out/db-push-dry-run.stdout
+          cat out/db-push-dry-run.stderr >&2
+          dry_bullets="$(grep -oE '[0-9]{3}_[A-Za-z0-9_]+\.sql' out/db-push-dry-run.stderr || true)"
+          dry_set="$(printf '%s\n' "$dry_bullets" | sed -E 's/^([0-9]{3}).*/\1/' | grep -E '^[0-9]{3}$' | sort -u | paste -sd, -)"
+          if [ "$dry_set" != "007,008,009" ]; then
+            echo "::error::dry run would push [${dry_set}], expected exactly 007,008,009"
+            exit 1
+          fi
+          echo "dry_run_pending=${dry_set}"
+
+      - name: Apply migrations 007-009 to production
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          supabase db push --linked --yes
+
+      - name: Post-migration assertions (read-only)
+        env:
+          PROD_DB_PASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+          PGOPTIONS: -c default_transaction_read_only=on
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.resolve.outputs.password_mode }}" = "trimmed" ]; then
+            PGPASSWORD="$(printf '%s' "$PROD_DB_PASSWORD")"
+          else
+            PGPASSWORD="$PROD_DB_PASSWORD"
+          fi
+          export PGPASSWORD
+          CONN="host=${{ steps.resolve.outputs.host }} port=${{ steps.resolve.outputs.port }} dbname=postgres user=${{ steps.resolve.outputs.user }} sslmode=require connect_timeout=15"
+          cat > out/post-assert.sql <<'SQL'
+          \set ON_ERROR_STOP on
+
+          select 'post_lemonades_total=' || count(*) from public.lemonades;
+          select 'post_canonical_rows=' || count(*) from public.lemonades where merged_into is null;
+          select 'post_merged_aliases=' || count(*) from public.lemonades where merged_into is not null;
+          select 'post_legacy_ratings=' || count(*) from public.lemonade_ratings where source = 'legacy';
+          select 'post_image_urls=' || count(*) from public.lemonades where nullif(btrim(image_url), '') is not null;
+          select 'post_listing_summaries=' || count(*) from public.listing_summaries;
+          select 'post_applied_migrations=' || coalesce(string_agg(version, ',' order by version), 'none')
+            from supabase_migrations.schema_migrations;
+
+          do $post$
+          declare
+            v_total bigint;
+            v_alias bigint;
+            v_canonical bigint;
+            v_legacy bigint;
+            v_legacy_distinct bigint;
+            v_missing bigint;
+            v_bad_score bigint;
+            v_image bigint;
+            v_image_hash text;
+            v_summary bigint;
+            v_summary_bad bigint;
+            v_rpcs int;
+            v_migrations text;
+          begin
+            if to_regclass('public.lemonade_ratings') is null
+               or to_regclass('public.matchup_votes') is null
+               or to_regclass('public.listing_summaries') is null then
+              raise exception 'post-assert failed: a 007/008 relation is missing';
+            end if;
+            if not exists (
+              select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'lemonades' and column_name = 'merged_into'
+            ) or not exists (
+              select 1 from information_schema.columns
+               where table_schema = 'public' and table_name = 'lemonades' and column_name = 'merge_reason'
+            ) then
+              raise exception 'post-assert failed: merge columns missing';
+            end if;
+
+            select count(*) into v_total from public.lemonades;
+            if v_total <> 50 then
+              raise exception 'post-assert failed: lemonades total % <> 50', v_total;
+            end if;
+            select count(*) into v_alias from public.lemonades where merged_into is not null;
+            if v_alias <> 1 then
+              raise exception 'post-assert failed: merged aliases % <> 1', v_alias;
+            end if;
+            select count(*) into v_canonical from public.lemonades where merged_into is null;
+            if v_canonical <> 49 then
+              raise exception 'post-assert failed: canonical listings % <> 49', v_canonical;
+            end if;
+
+            if not exists (
+              select 1
+                from public.lemonades loser
+                join public.lemonades winner on winner.id = loser.merged_into
+               where left(loser.id::text, 8) = '0c0cd8a0'
+                 and left(winner.id::text, 8) = '03134887'
+                 and lower(btrim(loser.name)) = 'twister soda trai cay'
+                 and lower(btrim(winner.name)) = 'twister soda trai cay'
+                 and nullif(btrim(winner.image_url), '') is not null
+                 and nullif(btrim(loser.image_url), '') is null
+            ) then
+              raise exception 'post-assert failed: Twister alias is not merged onto the photo-bearing canonical row';
+            end if;
+            if not exists (
+              select 1 from pg_indexes
+               where schemaname = 'public' and indexname = 'lemonades_canonical_name_unique'
+            ) then
+              raise exception 'post-assert failed: canonical-name unique index missing after the merge';
+            end if;
+
+            select count(*), count(distinct lemonade_id) into v_legacy, v_legacy_distinct
+              from public.lemonade_ratings where source = 'legacy';
+            if v_legacy <> 49 then
+              raise exception 'post-assert failed: legacy ratings % <> 49', v_legacy;
+            end if;
+            if v_legacy_distinct <> 49 then
+              raise exception 'post-assert failed: legacy ratings cover % distinct listings <> 49', v_legacy_distinct;
+            end if;
+            select count(*) into v_missing
+              from public.lemonades l
+             where l.merged_into is null
+               and l.flavor_rating is not null and l.sourness_rating is not null
+               and not exists (
+                 select 1 from public.lemonade_ratings r
+                  where r.lemonade_id = l.id and r.source = 'legacy'
+               );
+            if v_missing <> 0 then
+              raise exception 'post-assert failed: % canonical historical listings are missing their legacy rating', v_missing;
+            end if;
+            if exists (
+              select 1 from public.lemonade_ratings r
+                join public.lemonades l on l.id = r.lemonade_id
+               where l.merged_into is not null and r.source = 'legacy'
+            ) then
+              raise exception 'post-assert failed: a merged alias received a legacy rating';
+            end if;
+            select count(*) into v_bad_score
+              from public.lemonade_ratings r
+              join public.lemonades l on l.id = r.lemonade_id
+             where r.source = 'legacy'
+               and r.score <> round((l.flavor_rating::numeric * 0.65 + l.sourness_rating::numeric * 0.35), 2);
+            if v_bad_score <> 0 then
+              raise exception 'post-assert failed: % legacy ratings do not match flavor*0.65 + sourness*0.35', v_bad_score;
+            end if;
+
+            select count(*) into v_image from public.lemonades
+             where nullif(btrim(image_url), '') is not null;
+            if v_image <> 48 then
+              raise exception 'post-assert failed: % image_url rows <> 48', v_image;
+            end if;
+            select coalesce(md5(string_agg(id::text || '|' || image_url, ',' order by id)), 'none')
+              into v_image_hash
+              from public.lemonades where nullif(btrim(image_url), '') is not null;
+            if v_image_hash <> '911c79abda4cd159cf12a82fcd705d6a' then
+              raise exception 'post-assert failed: image hash changed to %', v_image_hash;
+            end if;
+
+            select count(*) into v_summary from public.listing_summaries;
+            if v_summary <> 49 then
+              raise exception 'post-assert failed: listing_summaries has % rows <> 49', v_summary;
+            end if;
+            select count(*) into v_summary_bad
+              from public.listing_summaries s
+             where s.rating_count <> s.legacy_rating_count + s.visitor_rating_count
+                or s.legacy_rating_count <> (
+                     select count(*) from public.lemonade_ratings r
+                      where r.lemonade_id = s.id and r.source = 'legacy')
+                or (s.legacy_rating_count > 0 and s.legacy_score <> (
+                     select max(r.score) from public.lemonade_ratings r
+                      where r.lemonade_id = s.id and r.source = 'legacy'));
+            if v_summary_bad <> 0 then
+              raise exception 'post-assert failed: % listing_summaries rows have inconsistent aggregates', v_summary_bad;
+            end if;
+
+            select count(*) into v_rpcs
+              from pg_proc p
+              join pg_namespace n on n.oid = p.pronamespace
+             where n.nspname = 'public'
+               and p.proname in (
+                 'assert_valid_browser_id', 'assert_valid_rating_input',
+                 'create_lemonade_with_rating', 'rate_lemonade', 'set_lemonade_photo',
+                 'cast_matchup_vote', 'get_matchup_result', 'search_lemonades',
+                 'get_browser_ratings'
+               );
+            if v_rpcs <> 9 then
+              raise exception 'post-assert failed: expected 9 public functions from 008, found %', v_rpcs;
+            end if;
+
+            if not (select relrowsecurity from pg_class where oid = 'public.lemonade_ratings'::regclass) then
+              raise exception 'post-assert failed: RLS not enabled on lemonade_ratings';
+            end if;
+            if not (select relrowsecurity from pg_class where oid = 'public.matchup_votes'::regclass) then
+              raise exception 'post-assert failed: RLS not enabled on matchup_votes';
+            end if;
+            if has_table_privilege('anon', 'public.lemonade_ratings', 'SELECT,INSERT,UPDATE,DELETE') then
+              raise exception 'post-assert failed: anon still holds privileges on lemonade_ratings';
+            end if;
+            if has_table_privilege('anon', 'public.matchup_votes', 'SELECT,INSERT,UPDATE,DELETE') then
+              raise exception 'post-assert failed: anon still holds privileges on matchup_votes';
+            end if;
+            if has_table_privilege('authenticated', 'public.lemonade_ratings', 'SELECT,INSERT,UPDATE,DELETE') then
+              raise exception 'post-assert failed: authenticated still holds privileges on lemonade_ratings';
+            end if;
+            if has_table_privilege('authenticated', 'public.matchup_votes', 'SELECT,INSERT,UPDATE,DELETE') then
+              raise exception 'post-assert failed: authenticated still holds privileges on matchup_votes';
+            end if;
+            if has_table_privilege('anon', 'public.lemonades', 'INSERT') then
+              raise exception 'post-assert failed: anon can still INSERT lemonades';
+            end if;
+            if has_table_privilege('anon', 'public.lemonades', 'UPDATE') then
+              raise exception 'post-assert failed: anon can still UPDATE lemonades';
+            end if;
+            if has_table_privilege('anon', 'public.lemonades', 'DELETE') then
+              raise exception 'post-assert failed: anon can still DELETE lemonades';
+            end if;
+            if not has_table_privilege('anon', 'public.lemonades', 'SELECT') then
+              raise exception 'post-assert failed: anon lost SELECT on lemonades';
+            end if;
+
+            if to_regclass('storage.objects') is not null then
+              if exists (
+                select 1 from pg_policies
+                 where schemaname = 'storage' and tablename = 'objects'
+                   and policyname in (
+                     'Public can upload limo images',
+                     'Public can update limo images',
+                     'Public can delete limo images'
+                   )
+              ) then
+                raise exception 'post-assert failed: legacy storage write policies still present after 009';
+              end if;
+              if not exists (
+                select 1 from pg_policies
+                 where schemaname = 'storage' and tablename = 'objects'
+                   and policyname = 'Public can view limo images'
+              ) then
+                raise exception 'post-assert failed: legacy storage public read policy missing after 009';
+              end if;
+            end if;
+
+            select coalesce(string_agg(version, ',' order by version), 'none') into v_migrations
+              from supabase_migrations.schema_migrations;
+            if v_migrations <> '001,002,003,004,007,008,009' then
+              raise exception 'post-assert failed: remote history [%] <> 001,002,003,004,007,008,009', v_migrations;
+            end if;
+
+            raise notice 'post-assert PASS: 007/008/009 invariants hold on production';
+          end
+          $post$;
+          SQL
+          if ! psql "$CONN" -X -w -v ON_ERROR_STOP=1 -tA -f out/post-assert.sql | tee out/post-assert-facts.txt; then
+            echo "::error::post-migration assertions failed; migrations are applied, investigate before any deploy"
+            exit 1
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo "### Production migration 007-009"
+            echo '```'
+            for f in out/backup-check.txt out/preflight-facts.txt out/migration-list.txt out/post-assert-facts.txt; do
+              if [ -f "$f" ]; then
+                echo "## ${f}"
+                cat "$f"
+              fi
+            done
+            if [ -f out/db-push-dry-run.stderr ]; then
+              echo "## dry run"
+              cat out/db-push-dry-run.stderr
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload migration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-migrate-evidence-${{ github.run_id }}
+          path: |
+            out/backup-check.txt
+            out/preflight-facts.txt
+            out/migration-list.txt
+            out/db-push-dry-run.stdout
+            out/db-push-dry-run.stderr
+            out/post-assert-facts.txt
+            out/connection-test.log
+            out/prod-backup/snapshot-report.txt
+          retention-days: 14
+          if-no-files-found: warn
