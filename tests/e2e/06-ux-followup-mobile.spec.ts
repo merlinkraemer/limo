@@ -6,6 +6,10 @@ import { test, expect, type Page } from '@playwright/test';
  * Headless Chromium cannot show a real virtual keyboard, so the short-viewport
  * test models a `resizes-content` keyboard; real iOS visual-viewport behaviour
  * (resizes-visual + body lock) still needs a device check.
+ *
+ * CDP synthetic touch (`Input.synthesizeScrollGesture`) does not scroll inner
+ * scrollers on the Linux CI runner, so panel scrolling is proven with
+ * `mouse.wheel`; physical touch scrolling remains a device check.
  */
 
 async function createListingMobile(page: Page, name: string, stars: number) {
@@ -53,7 +57,7 @@ test.describe('ux follow-up (mobile)', () => {
     expect(await page.evaluate(() => document.documentElement.classList.contains('locked'))).toBe(false);
   });
 
-  test('panel touch-scrolls while the document stays locked (short viewport)', async ({ page }) => {
+  test('panel scrolls while the document stays locked (short viewport)', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 400 });
     await page.goto('/');
     const stamp = Date.now();
@@ -63,23 +67,31 @@ test.describe('ux follow-up (mobile)', () => {
     await page.locator('#add-q').fill('E2E Touch');
     const panel = page.locator('.sheet-host:not(.detail) .panel');
     await expect(panel).toBeVisible();
-    // Make sure there is something to scroll before gesturing.
+
+    // The panel must be the scroller for the overflowing content and keep its
+    // pan gesture enabled; `touch-action: none` on locked html/body used to
+    // swallow the pan.
     await expect
       .poll(() => panel.evaluate(el => el.scrollHeight - el.clientHeight))
       .toBeGreaterThan(20);
-
-    // `touch-action: none` on the locked html/body used to swallow the pan.
+    expect(await panel.evaluate(el => getComputedStyle(el).overflowY)).toBe('auto');
+    expect(await panel.evaluate(el => getComputedStyle(el).touchAction)).toBe('pan-y');
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).touchAction)).not.toBe('none');
 
+    // The short-viewport sheet locks the document while it is open.
+    expect(await page.evaluate(() => document.documentElement.classList.contains('locked'))).toBe(true);
+    expect(await page.evaluate(() => document.body.classList.contains('locked'))).toBe(true);
+    expect(await page.evaluate(() => getComputedStyle(document.body).position)).toBe('fixed');
+
+    // Wheel inside the panel must scroll the panel, never the locked document.
     const box = (await panel.boundingBox())!;
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Input.synthesizeScrollGesture', {
-      x: Math.round(box.x + box.width / 2),
-      y: Math.round(box.y + Math.min(box.height - 30, 320)),
-      yDistance: -200,
-      speed: 700,
-      gestureSourceType: 'touch',
-    });
+    const x = Math.round(box.x + box.width / 2);
+    const y = Math.round(box.y + box.height / 2);
+    expect(y).toBeGreaterThan(box.y);
+    expect(y).toBeLessThan(box.y + box.height);
+    await page.mouse.move(x, y);
+    await page.mouse.wheel(0, 300);
+
     await expect.poll(() => panel.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
   });

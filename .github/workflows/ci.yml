@@ -42,6 +42,16 @@ jobs:
             sudo apt-get install -y postgresql-client
           fi
       - run: npm run test:e2e
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
 
   db:
     runs-on: ubuntu-latest
