@@ -1,14 +1,10 @@
-import { getAllLemonades } from '@/services/lemonade-service';
-import { Leaderboard } from './components/Leaderboard';
+import { getAllListingSummaries } from '@/services/listing-service';
+import { LemoApp } from './components/LemoApp';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  const lemonades = await getAllLemonades();
+  const listings = await getAllListingSummaries();
 
-  return (
-    <main>
-      <Leaderboard initialData={lemonades} />
-    </main>
-  );
+  return <LemoApp initialListings={listings} />;
 }

@@ -1,15 +1,22 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { addLemonade } from '@/app/actions';
 
-vi.mock('@/services/lemonade-service', () => ({
-  createLemonade: vi.fn(),
+vi.mock('@/services/listing-service', () => ({
+  createListingWithFirstRating: vi.fn(),
+}));
+
+vi.mock('@/lib/browser-identity', () => ({
+  getOrCreateBrowserId: vi.fn(),
 }));
 
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }));
 
-import { createLemonade } from '@/services/lemonade-service';
+import { createListingWithFirstRating } from '@/services/listing-service';
+import { getOrCreateBrowserId } from '@/lib/browser-identity';
+
+const BROWSER_ID = '11111111-2222-4333-8444-555555555555';
 
 const validData = {
   name: 'Classic Limo',
@@ -23,11 +30,15 @@ const validData = {
 const SUPABASE_URL = 'https://abc123.supabase.co';
 const ALLOWED_IMAGE_URL = `${SUPABASE_URL}/storage/v1/object/public/lemonades/abc.png`;
 
-describe('addLemonade', () => {
+describe('addLemonade (legacy bridge)', () => {
   const originalEnv = process.env;
 
   beforeEach(() => {
-    vi.mocked(createLemonade).mockResolvedValue({} as never);
+    vi.mocked(createListingWithFirstRating).mockResolvedValue({
+      listingId: '22222222-2222-4333-8444-555555555555',
+      duplicateOf: null,
+    });
+    vi.mocked(getOrCreateBrowserId).mockResolvedValue(BROWSER_ID);
     process.env = { ...originalEnv, NEXT_PUBLIC_SUPABASE_URL: SUPABASE_URL };
   });
 
@@ -36,32 +47,31 @@ describe('addLemonade', () => {
     process.env = originalEnv;
   });
 
-  it('returns success for valid input without image', async () => {
+  it('maps the legacy two-axis form to a real first visitor rating', async () => {
     const result = await addLemonade(validData);
+
     expect(result).toEqual({ success: true });
-    expect(createLemonade).toHaveBeenCalledWith({
+    expect(createListingWithFirstRating).toHaveBeenCalledWith({
       name: validData.name,
       description: validData.description,
-      flavorRating: validData.flavorRating,
-      sournessRating: validData.sournessRating,
+      score: 7.65,
+      comment: undefined,
       imageUrl: undefined,
       locationCity: validData.locationCity,
       addedBy: undefined,
+      browserId: BROWSER_ID,
     });
   });
 
-  it('returns success for valid input with allowed image URL', async () => {
-    const result = await addLemonade({
-      ...validData,
-      imageUrl: ALLOWED_IMAGE_URL,
-    });
+  it('keeps allowed image URLs', async () => {
+    const result = await addLemonade({ ...validData, imageUrl: ALLOWED_IMAGE_URL });
     expect(result).toEqual({ success: true });
-    expect(createLemonade).toHaveBeenCalledWith(
-      expect.objectContaining({ imageUrl: ALLOWED_IMAGE_URL }),
+    expect(createListingWithFirstRating).toHaveBeenCalledWith(
+      expect.objectContaining({ imageUrl: ALLOWED_IMAGE_URL })
     );
   });
 
-  it('returns error for invalid schema (short name, out-of-range ratings)', async () => {
+  it('rejects invalid schema input', async () => {
     const result = await addLemonade({
       name: 'A',
       description: 'bad',
@@ -71,11 +81,10 @@ describe('addLemonade', () => {
       locationCity: '',
     });
     expect(result).toHaveProperty('error');
-    expect((result as { error: string }).error).toBeTruthy();
-    expect(createLemonade).not.toHaveBeenCalled();
+    expect(createListingWithFirstRating).not.toHaveBeenCalled();
   });
 
-  it('returns error when image URL is not from storage bucket', async () => {
+  it('rejects unsupported image hosts', async () => {
     const result = await addLemonade({
       ...validData,
       imageUrl: 'https://evil.com/malicious.png',
@@ -83,19 +92,25 @@ describe('addLemonade', () => {
     expect(result).toEqual({
       error: 'Image URL must be from your storage bucket',
     });
-    expect(createLemonade).not.toHaveBeenCalled();
+    expect(createListingWithFirstRating).not.toHaveBeenCalled();
   });
 
-  it('returns error when createLemonade throws', async () => {
-    vi.mocked(createLemonade).mockRejectedValue(new Error('Database connection failed'));
+  it('is actionable when the listing already exists', async () => {
+    vi.mocked(createListingWithFirstRating).mockResolvedValue({
+      listingId: null,
+      duplicateOf: '33333333-2222-4333-8444-555555555555',
+    });
+
     const result = await addLemonade(validData);
-    expect(result).toHaveProperty('error');
-    expect((result as { error: string }).error).toBe('Database connection failed');
+    expect(result).toEqual({
+      error:
+        '"Classic Limo" is already on the list - rate the existing listing instead of adding a duplicate',
+    });
   });
 
-  it('returns generic error for non-Error throws', async () => {
-    vi.mocked(createLemonade).mockRejectedValue('string error');
+  it('surfaces service errors', async () => {
+    vi.mocked(createListingWithFirstRating).mockRejectedValue(new Error('Database connection failed'));
     const result = await addLemonade(validData);
-    expect(result).toEqual({ error: 'Failed to create entry' });
+    expect(result).toEqual({ error: 'Database connection failed' });
   });
 });

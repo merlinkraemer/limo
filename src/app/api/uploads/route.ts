@@ -1,23 +1,43 @@
-import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/service';
+import { getCloudinary, getUploadFolder } from '@/lib/cloudinary';
 import {
-  DEFAULT_STORAGE_BUCKET,
-  getFileExtension,
-  getStorageBucketCandidates,
-  isBucketNotFoundError,
-} from '@/lib/supabase/storage.shared';
+  clientRateLimitKeys,
+  checkUploadRateLimit,
+  sniffImageType,
+} from '@/lib/upload-guard';
+import {
+  MAX_UPLOAD_BYTES,
+  UPLOAD_FAILED_MESSAGE,
+  UPLOAD_RATE_LIMITED_MESSAGE,
+  UPLOAD_TOO_LARGE_MESSAGE,
+  UPLOAD_UNSUPPORTED_MESSAGE,
+} from '@/lib/upload-limits';
 
-async function ensureBucketExists(bucket: string) {
-  const supabase = createServiceClient();
-  const { error } = await supabase.storage.createBucket(bucket, { public: true });
+export const runtime = 'nodejs';
 
-  if (error && !/already exists/i.test(error.message)) {
-    throw error;
-  }
-}
+const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
+
+// Allow a little multipart framing overhead on top of the file cap so a file
+// exactly at the limit is not rejected by the cheap header pre-check.
+const MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 64 * 1024;
 
 export async function POST(request: Request) {
+  const rateLimit = checkUploadRateLimit(clientRateLimitKeys(request));
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: UPLOAD_RATE_LIMITED_MESSAGE },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(Math.max(1, Math.ceil(rateLimit.retryAfterMs / 1000))) },
+      }
+    );
+  }
+
+  const contentLength = Number(request.headers.get('content-length') ?? 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+    return NextResponse.json({ error: UPLOAD_TOO_LARGE_MESSAGE }, { status: 413 });
+  }
+
   try {
     const formData = await request.formData();
     const file = formData.get('file');
@@ -26,56 +46,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing upload file.' }, { status: 400 });
     }
 
-    const supabase = createServiceClient();
-    const fileExt = getFileExtension(file);
-    const filePath = `uploads/${randomUUID()}.${fileExt}`;
-    const configuredBucket =
-      process.env.SUPABASE_STORAGE_BUCKET?.trim() ||
-      process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET?.trim();
-    const bucketCandidates = getStorageBucketCandidates(configuredBucket);
-
-    for (const bucket of bucketCandidates) {
-      let { error } = await supabase.storage.from(bucket).upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false,
-      });
-
-      if (error && isBucketNotFoundError(error) && bucket === DEFAULT_STORAGE_BUCKET) {
-        await ensureBucketExists(bucket);
-
-        const retry = await supabase.storage.from(bucket).upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-        });
-        error = retry.error;
-      }
-
-      if (error) {
-        if (isBucketNotFoundError(error)) {
-          continue;
-        }
-
-        return NextResponse.json({ error: error.message || 'Upload failed.' }, { status: 500 });
-      }
-
-      const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(filePath);
-      return NextResponse.json({ publicUrl: publicUrlData.publicUrl });
+    if (!ALLOWED_TYPES.has(file.type)) {
+      return NextResponse.json({ error: UPLOAD_UNSUPPORTED_MESSAGE }, { status: 400 });
     }
 
-    return NextResponse.json(
-      {
-        error: `Storage bucket missing. Checked ${bucketCandidates.join(', ')}. Run the latest Supabase migration or set SUPABASE_STORAGE_BUCKET.`,
-      },
-      { status: 500 }
-    );
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ error: UPLOAD_TOO_LARGE_MESSAGE }, { status: 413 });
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    if (!sniffImageType(buffer)) {
+      return NextResponse.json({ error: UPLOAD_UNSUPPORTED_MESSAGE }, { status: 400 });
+    }
+
+    const cloudinary = getCloudinary();
+    const folder = getUploadFolder();
+
+    const result = await new Promise<{ secure_url: string }>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder, resource_type: 'image' },
+        (error, uploaded) => {
+          if (error || !uploaded) {
+            reject(error ?? new Error('Cloudinary upload returned no result.'));
+            return;
+          }
+          resolve(uploaded as { secure_url: string });
+        }
+      );
+      stream.end(buffer);
+    });
+
+    return NextResponse.json({ publicUrl: result.secure_url });
   } catch (error) {
     console.error('Upload route error:', error);
 
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : 'Upload failed.',
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: UPLOAD_FAILED_MESSAGE }, { status: 500 });
   }
 }

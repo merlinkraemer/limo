@@ -1,0 +1,85 @@
+name: db-migrate-staging
+
+# Staging-only Supabase migration runner.
+#
+# Triggered by migration-only commits pushed to `staging` (see the
+# "Migration-first commits" section in docs/DEPLOYMENT.md). It applies pending
+# migrations to the limo-staging project before an app deploy can rely on them.
+#
+# Hard isolation from production:
+#   - only runs for `refs/heads/staging` (job-level guard and event filter);
+#   - the staging project ref is hardcoded and re-asserted after `supabase link`;
+#   - only SUPABASE_STAGING_DB_PASSWORD is used. The production ref
+#     (mpbpzxkttsqmsaazxbkk) and SUPABASE_PRODUCTION_DB_PASSWORD must never be
+#     referenced from this file.
+# Secrets are never echoed; do not add `set -x` or log connection strings.
+
+on:
+  push:
+    branches: [staging]
+    paths:
+      - 'supabase/migrations/**'
+
+permissions:
+  contents: read
+
+# Serialize staging migration runs; never cancel a migration mid-flight.
+concurrency:
+  group: supabase-migrations-staging
+  cancel-in-progress: false
+
+jobs:
+  migrate-staging:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_PROJECT_REF: xduxzpriixkxrygulgon
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Refuse to run outside the staging branch
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF}" != "refs/heads/staging" ]; then
+            echo "Refusing to run: expected refs/heads/staging, got ${GITHUB_REF}" >&2
+            exit 1
+          fi
+
+      - name: Link staging project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STAGING_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          supabase link --project-ref "$STAGING_PROJECT_REF" -p "$SUPABASE_DB_PASSWORD"
+
+      - name: Guard linked project ref is staging
+        run: |
+          set -euo pipefail
+          linked="$(cat supabase/.temp/project-ref)"
+          if [ "$linked" != "$STAGING_PROJECT_REF" ]; then
+            echo "Refusing to push: linked project '${linked}' is not the staging project '${STAGING_PROJECT_REF}'" >&2
+            exit 1
+          fi
+
+      - name: Show pending migrations (dry run)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STAGING_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          supabase migration list --linked
+          supabase db push --linked --dry-run
+
+      - name: Apply pending migrations to limo-staging
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_STAGING_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          supabase db push --linked
