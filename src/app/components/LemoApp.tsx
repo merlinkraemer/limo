@@ -11,6 +11,7 @@ import {
   fetchMatchupResult,
   fetchMyRatings,
   rateListing,
+  rateListingScoreOnly,
   searchListingsAction,
 } from '@/app/listing-actions';
 import { uploadImage } from '@/lib/supabase/storage';
@@ -449,12 +450,14 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
     if (!addId || rateScore === null || rateSaving) return;
     setRateSaving(true);
     setRateError(null);
-    const result = await rateListing({
-      listingId: addId,
-      score: rateScore,
-      traits: rateTraits,
-      comment: rateComment.trim() || undefined,
-    });
+    const result = rateReturnTo === 'game'
+      ? await rateListingScoreOnly({ listingId: addId, score: rateScore })
+      : await rateListing({
+          listingId: addId,
+          score: rateScore,
+          traits: rateTraits,
+          comment: rateComment.trim() || undefined,
+        });
     setRateSaving(false);
     if (!result.ok) {
       setRateError(result.error);
@@ -1242,7 +1245,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                       className="link-btn"
                       style={{ justifySelf: 'start' }}
                       onClick={() => {
-                        if (rateReturnTo === 'detail') {
+                        if (rateReturnTo === 'detail' || rateReturnTo === 'game') {
                           closeAdd();
                         } else {
                           setAddId(null);
@@ -1267,12 +1270,13 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                       <button
                         type="button"
                         className="link-btn rate-comment"
+                        hidden={rateReturnTo === 'game'}
                         onClick={() => setShowRateComment(value => !value)}
                       >
                         {showRateComment ? '− remove comment' : '+ add a comment'}
                       </button>
                     </div>
-                    <div className="rate-comment-field" hidden={!showRateComment}>
+                    <div className="rate-comment-field" hidden={rateReturnTo === 'game' || !showRateComment}>
                       <label htmlFor="rate-comment">comment</label>
                       <textarea
                         className="input"
@@ -1283,7 +1287,7 @@ export function LemoApp({ initialListings }: { initialListings: ListingSummary[]
                         onChange={event => setRateComment(event.target.value)}
                       />
                     </div>
-                    <div className="field">
+                    <div className="field" hidden={rateReturnTo === 'game'}>
                       <p className="lbl">describe the taste (optional):</p>
                       <TraitChips
                         selected={rateTraits}

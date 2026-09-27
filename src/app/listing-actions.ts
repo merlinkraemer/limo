@@ -123,6 +123,46 @@ export async function rateListing(input: {
   }
 }
 
+/**
+ * Score-only re-rating from a game round. The sheet sends just the new score,
+ * so read this browser's stored rating first and forward its traits/comment —
+ * the rate_lemonade RPC replaces those columns on every call.
+ */
+export async function rateListingScoreOnly(input: {
+  listingId: string;
+  score: number;
+}): Promise<RateListingActionResult> {
+  const parsed = ratingSubmissionSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: firstFieldError(parsed.error) };
+  }
+
+  try {
+    const browserId = await getOrCreateBrowserId();
+    const ratings = await getBrowserRatings(browserId);
+    const existing = ratings.find(rating => rating.listing_id === parsed.data.listingId) ?? null;
+    const result = await submitListingRating({
+      listingId: parsed.data.listingId,
+      score: parsed.data.score,
+      traits: existing
+        ? {
+            sour: existing.trait_sour ?? undefined,
+            sweet: existing.trait_sweet ?? undefined,
+            fizz: existing.trait_fizz ?? undefined,
+            fruity: existing.trait_fruity ?? undefined,
+          }
+        : undefined,
+      comment: existing?.comment ?? undefined,
+      browserId,
+    });
+
+    revalidatePath('/');
+    return { ok: true, ratingId: result.ratingId };
+  } catch (error) {
+    return { ok: false, error: messageOf(error, 'Failed to save rating') };
+  }
+}
+
 export async function contributePhoto(input: {
   listingId: string;
   imageUrl: string;

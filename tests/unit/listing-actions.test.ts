@@ -28,6 +28,7 @@ import {
   fetchMatchupResult,
   fetchMyRatings,
   rateListing,
+  rateListingScoreOnly,
   searchListingsAction,
 } from '@/app/listing-actions';
 import {
@@ -121,6 +122,68 @@ describe('listing actions', () => {
 
     expect(await rateListing({ listingId: LISTING_ID, score: 0 })).toMatchObject({ ok: false });
     expect(submitListingRating).toHaveBeenCalledTimes(1);
+  });
+
+  it('rateListingScoreOnly re-rating forwards the stored traits and comment', async () => {
+    vi.mocked(getBrowserRatings).mockResolvedValue([
+      {
+        listing_id: LISTING_ID,
+        score: 4,
+        trait_sour: 2,
+        trait_sweet: null,
+        trait_fizz: 1,
+        trait_fruity: null,
+        comment: 'very zesty',
+        updated_at: '2026-07-03T00:00:00Z',
+      },
+    ]);
+    vi.mocked(submitListingRating).mockResolvedValue({ ratingId: 'rating-2' });
+
+    const result = await rateListingScoreOnly({ listingId: LISTING_ID, score: 9 });
+
+    expect(result).toEqual({ ok: true, ratingId: 'rating-2' });
+    expect(getBrowserRatings).toHaveBeenCalledWith(BROWSER_ID);
+    expect(submitListingRating).toHaveBeenCalledWith({
+      listingId: LISTING_ID,
+      score: 9,
+      traits: { sour: 2, sweet: undefined, fizz: 1, fruity: undefined },
+      comment: 'very zesty',
+      browserId: BROWSER_ID,
+    });
+  });
+
+  it('rateListingScoreOnly stays metadata-free for a first rating on that listing', async () => {
+    // A stored rating for a different listing must not leak onto this one.
+    vi.mocked(getBrowserRatings).mockResolvedValue([
+      {
+        listing_id: OTHER_ID,
+        score: 4,
+        trait_sour: 2,
+        trait_sweet: null,
+        trait_fizz: null,
+        trait_fruity: null,
+        comment: 'other lemon',
+        updated_at: '2026-07-03T00:00:00Z',
+      },
+    ]);
+    vi.mocked(submitListingRating).mockResolvedValue({ ratingId: 'rating-3' });
+
+    const result = await rateListingScoreOnly({ listingId: LISTING_ID, score: 6 });
+
+    expect(result).toEqual({ ok: true, ratingId: 'rating-3' });
+    expect(submitListingRating).toHaveBeenCalledWith({
+      listingId: LISTING_ID,
+      score: 6,
+      traits: undefined,
+      comment: undefined,
+      browserId: BROWSER_ID,
+    });
+  });
+
+  it('rateListingScoreOnly validates before reading or writing', async () => {
+    expect(await rateListingScoreOnly({ listingId: LISTING_ID, score: 11 })).toMatchObject({ ok: false });
+    expect(getBrowserRatings).not.toHaveBeenCalled();
+    expect(submitListingRating).not.toHaveBeenCalled();
   });
 
   it('contributePhoto enforces allowed hosts and reports the winner', async () => {

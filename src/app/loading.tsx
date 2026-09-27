@@ -1,6 +1,9 @@
 export default function Loading() {
   return (
-    <main className="wrap" style={{ paddingTop: 48 }}>
+    <main className="wrap route-loading">
+      <span className="route-loading-lemon" aria-hidden="true">
+        🍋
+      </span>
       <p className="note" role="status" aria-live="polite">
         loading lemonades…
       </p>
