@@ -1,0 +1,181 @@
+name: prod-backup-drill
+
+# READ-ONLY production backup drill. This workflow only ever runs
+#   * pg_dump (custom format, full database) and
+#   * read-only psql SELECTs
+# against the production Supabase project. It never runs migrations, never
+# writes to the database, never deploys, and is only reachable from
+# `refs/heads/drill/prod-backup` (event filter + job guard + step guard).
+#
+# The plaintext dump never leaves the runner: it is AES-256 encrypted with a
+# passphrase that exists only in the PROD_BACKUP_PASSPHRASE repository secret
+# and in the operator's protected local scratch directory. Secrets are never
+# echoed; do not add `set -x` or log connection strings.
+
+on:
+  push:
+    branches: [drill/prod-backup]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prod-backup-drill
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.ref == 'refs/heads/drill/prod-backup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PROD_PROJECT_REF: mpbpzxkttsqmsaazxbkk
+      PGCLIENTENCODING: UTF8
+    steps:
+      - name: Refuse to run outside the drill branch
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF}" != "refs/heads/drill/prod-backup" ]; then
+            echo "Refusing to run: expected refs/heads/drill/prod-backup, got ${GITHUB_REF}" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL 17 client (pg_dump must match server major)
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /tmp/pgdg.list
+          sudo mv /tmp/pgdg.list /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
+
+      - name: Resolve a reachable production host (read-only Management API)
+        id: resolve
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROD_DB_PASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          api="https://api.supabase.com/v1/projects/${PROD_PROJECT_REF}"
+          curl -fsS -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" "$api" -o project.json
+          echo "project_status=$(jq -r '.status' project.json) project_region=$(jq -r '.region' project.json)"
+          # Session-mode pooler hosts are IPv4; the direct db.<ref> host is
+          # IPv6-only on this project, which GitHub-hosted runners cannot reach.
+          api_host=""
+          if curl -fsS -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+               "https://api.supabase.com/v1/projects/${PROD_PROJECT_REF}/config/database/pooler" \
+               -o pooler.json 2>/dev/null; then
+            api_host="$(jq -r 'if type == "array" then (.[0].db_host // empty) else (.db_host // empty) end' pooler.json)"
+          fi
+          {
+            [ -n "$api_host" ] && echo "${api_host}|5432|postgres.${PROD_PROJECT_REF}|pooler-api"
+            echo "aws-1-eu-west-1.pooler.supabase.com|5432|postgres.${PROD_PROJECT_REF}|pooler-aws1"
+            echo "aws-0-eu-west-1.pooler.supabase.com|5432|postgres.${PROD_PROJECT_REF}|pooler-aws0"
+            echo "db.${PROD_PROJECT_REF}.supabase.co|5432|postgres|direct-ipv6"
+          } | sort -u > candidates.txt
+          : > out/connection-test.log
+          host=""; port=""; user=""
+          while IFS='|' read -r h p u label; do
+            [ -n "$h" ] || continue
+            echo "trying ${label}: ${h}:${p}"
+            if PGPASSWORD="$PROD_DB_PASSWORD" PGCONNECT_TIMEOUT=15 \
+                 psql -X -w -tA "host=${h} port=${p} dbname=postgres user=${u} sslmode=require connect_timeout=15" \
+                 -c 'select 1' >/dev/null 2>>out/connection-test.log; then
+              host="$h"; port="$p"; user="$u"
+              echo "connected via ${label} as ${u}"
+              break
+            fi
+          done < candidates.txt
+          if [ -z "$host" ]; then
+            echo "::error::Production DB connection failed on every candidate host (is SUPABASE_PRODUCTION_DB_PASSWORD stale?)."
+            tail -n 20 out/connection-test.log
+            exit 1
+          fi
+          {
+            echo "host=${host}"
+            echo "port=${port}"
+            echo "user=${user}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Snapshot metadata (read-only SELECTs)
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CONN="host=${{ steps.resolve.outputs.host }} port=${{ steps.resolve.outputs.port }} dbname=postgres user=${{ steps.resolve.outputs.user }} sslmode=require connect_timeout=15"
+          q() { psql "$CONN" -X -w -tA -F'|' -c "$1"; }
+          {
+            echo "snapshot_started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "git_sha=${GITHUB_SHA}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "server_version=$(q "select current_setting('server_version')")"
+            echo "database=$(q 'select current_database()')"
+            echo "lemonades_total=$(q 'select count(*) from public.lemonades')"
+            echo "lemonades_with_image_url=$(q "select count(*) from public.lemonades where nullif(btrim(image_url),'') is not null")"
+            echo "storage_objects_total=$(q 'select count(*) from storage.objects' || echo unavailable)"
+            echo "storage_buckets=$(q 'select string_agg(id, \",\" order by id) from storage.buckets' || echo unavailable)"
+            echo "public_table_counts_approx:"
+            q "select relname, n_live_tup from pg_stat_user_tables where schemaname='public' order by relname" || true
+            echo "applied_migrations:"
+            q "select version, name from supabase_migrations.schema_migrations order by version" || echo "unavailable"
+          } > out/snapshot-report.txt
+          cat out/snapshot-report.txt
+
+      - name: Full custom-format pg_dump (read-only)
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_PRODUCTION_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CONN="host=${{ steps.resolve.outputs.host }} port=${{ steps.resolve.outputs.port }} dbname=postgres user=${{ steps.resolve.outputs.user }} sslmode=require connect_timeout=15"
+          started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          /usr/lib/postgresql/17/bin/pg_dump "$CONN" \
+            --format=custom --compress=6 --no-password --verbose \
+            --file=out/prod.dump 2> out/pg_dump.log
+          finished=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          {
+            echo "dump_started_utc=${started}"
+            echo "dump_finished_utc=${finished}"
+            echo "dump_bytes=$(stat -c %s out/prod.dump)"
+          } >> out/snapshot-report.txt
+          /usr/lib/postgresql/17/bin/pg_restore --list out/prod.dump > out/pg_restore_list.txt
+          echo "pg_restore_list_entries=$(grep -c ';' out/pg_restore_list.txt || true)" >> out/snapshot-report.txt
+
+      - name: Encrypt dump and checksum (plaintext stays on runner only)
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.PROD_BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          test -n "${BACKUP_PASSPHRASE}"
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000 \
+            -in out/prod.dump -out out/prod.dump.enc -pass env:BACKUP_PASSPHRASE
+          ( cd out && sha256sum prod.dump.enc prod.dump > SHA256SUMS )
+          rm -f out/prod.dump
+          echo "encrypted_backup_bytes=$(stat -c %s out/prod.dump.enc)" >> out/snapshot-report.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Production backup drill"
+            echo '```'
+            cat out/snapshot-report.txt 2>/dev/null || echo "no snapshot report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload encrypted artifact (short retention)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-backup-drill-${{ github.run_id }}
+          path: out/
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: warn
