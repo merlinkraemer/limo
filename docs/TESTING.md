@@ -78,6 +78,12 @@ not, so don't assume an empty database in either case.
 ### Database State
 
 - **`npm run test:e2e`:** Runs `supabase db reset --no-seed` before tests. DB is clean every run.
+- After the reset the script repairs one local-only Storage index: the pinned storage-api
+  (`v1.44.11`) migration drops the legacy unique index on `storage.objects (bucket_id, name)`
+  while its own upsert query still uses `ON CONFLICT ("name", "bucket_id")`, so every upload
+  would fail with Postgres `42P10`. The script recreates that index in the local database only
+  (as `supabase_storage_admin`) and exits loudly if `psql` is missing or the repair fails.
+  Hosted migrations and the production schema are not touched.
 - **`npm run test:e2e:local`:** Uses whatever DB state exists. Reset the DB between runs if tests depend on a clean state.
 
 ### Conventions
