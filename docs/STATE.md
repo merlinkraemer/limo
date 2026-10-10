@@ -12,7 +12,8 @@ lemolist.com works well on phones for Mo and strangers logging lemonades. Done f
 AGENTS.md ## Unattended. Thread-specific limits: holiday 2026-10-30 → 11-16, nothing user-visible lands.
 
 ## Waiting on Merlin
-_(none)_
+1. Land mobile polish (3 CSS bug fixes: start-page sideways scroll, broken-photo label overflow, comment tap target) — rec: land after holiday review on a phone — branch: `q5/mobile-polish` (audit doc + before/after screenshots in docs/mobile-audit-2026-10.md)
+2. Mobile design proposals: score stars in 2 rows of 5, sticky submit on sheets, shorter game cards — rec: stars yes, others later — branch: none (in audit doc)
 Parked: admin mode rebuild (not now). Drill branches `drill/prod-backup`, `drill/prod-migrate` kept until the prod-migration path is decided.
 
 ## Queue
@@ -41,7 +42,7 @@ acceptance: `npm run test:e2e` green on lab2; `preview start limo web-review` se
 validation: `npm run test:e2e`
 do not touch: remote Supabase projects, `.env.local` keys for remote.
 
-### Q5 Mobile polish audit [running] [box]
+### Q5 Mobile polish audit [landed] [box]
 goal: headless 375/390px screenshots of every main flow (leaderboard, add, rate, matchup, detail sheet) on the review preview; list issues ranked.
 acceptance: issue list with screenshots + a fix branch for the top items, unlanded.
 validation: `npm run check`, Playwright mobile viewport
@@ -62,4 +63,5 @@ acceptance: list; nothing deleted.
 - Q4: local Supabase runs on lab2 (CLI via `node_modules/.bin`, slim stack); test:db green, e2e 24/25, review preview serves on :4178.
 - Box is RAM-tight (7.6 GB, swap full): run one browser-heavy worker at a time.
 - Q7 landed: e2e failure was a test bug (game pairs reshuffle after refresh); spec fixed, app untouched.
-- Running: Q5 mobile audit → branch `q5/mobile-polish`, unlanded (user-visible).
+- Q5 done: audit + 3 CSS fixes on `q5/mobile-polish`, unlanded (user-visible). 3 design proposals in the doc.
+- Running: Q8 01-smoke selector picks a desktop-hidden button (fails on dev too) — test-only fix on `q8/smoke-selector`.
