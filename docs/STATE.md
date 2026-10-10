@@ -16,6 +16,7 @@ AGENTS.md ## Unattended. Thread-specific limits: holiday 2026-10-30 → 11-16, n
 2. Drill branches `drill/prod-backup` (prod-backup-drill.yml) and `drill/prod-migrate` (db-migrate-production.yml), also on origin — rec: keep until prod-migration path is decided — branch: same names
 3. Worktree `limo-prod-deploy` (detached, only holds a `.vercel/` link) — rec: remove — branch: none
 4. Stale remotes `feat/cloudinary-uploads` (0 unique), `feat/staging-environment` (old), `docs/tag-based-ratings-idea` (idea doc, PR #22) — rec: delete first two, keep idea PR — needs a push
+6. Close issues #19 (staging db push checklist) and #20 (vercel deploy + envs) — rec: close both, obsolete — branch: none
 5. Rebuild admin mode on main (old #18 can't port: Leaderboard.tsx gone, RLS changed) — rec: not now
 
 ## Queue
@@ -32,7 +33,7 @@ acceptance: list of what is unique per branch/stash; local worktrees with nothin
 validation: `git worktree list`, `git branch -vv`
 do not touch: remote branches (deleting them is a push).
 
-### Q3 Docs truth pass [running] [box]
+### Q3 Docs truth pass [landed] [box]
 goal: AGENTS.md "State" paragraph, docs/todo.md (Cloudinary release; PR #24 is merged), README, DEPLOYMENT match what is live; check issues #19/#20 for obsolete ones.
 acceptance: docs describe main as live; todo.md replaced or removed; issue verdicts listed (closing them is Merlin's).
 validation: `npm run check`
@@ -57,4 +58,4 @@ acceptance: list; nothing deleted.
 ## Rundown
 - Q1: old dev's 6 commits all superseded or unportable; nothing to port.
 - Q2: removed 2 empty worktrees, 3 empty branches, 2 stashes (all tagged `archive/*`); rest in Waiting on Merlin.
-- Q3 docs pass running. Next: Q4 local Supabase, then Q5 mobile audit.
+- Q3 landed on dev: docs say main is live, todo.md removed, prod migration state marked unverified. Next: Q4 local Supabase, then Q5 mobile audit.
