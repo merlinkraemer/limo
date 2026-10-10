@@ -41,13 +41,13 @@ acceptance: `npm run test:e2e` green on lab2; `preview start limo web-review` se
 validation: `npm run test:e2e`
 do not touch: remote Supabase projects, `.env.local` keys for remote.
 
-### Q5 Mobile polish audit [queued] [box]
+### Q5 Mobile polish audit [running] [box]
 goal: headless 375/390px screenshots of every main flow (leaderboard, add, rate, matchup, detail sheet) on the review preview; list issues ranked.
 acceptance: issue list with screenshots + a fix branch for the top items, unlanded.
 validation: `npm run check`, Playwright mobile viewport
 do not touch: data/schema.
 
-### Q7 Quick-rate e2e failure [running] [box]
+### Q7 Quick-rate e2e failure [landed] [box]
 goal: `tests/e2e/07-quick-rate.spec.ts:87` fails on lab2 (re-rating shows 2/10, expects 9/10); find root cause, fix on `q7/quick-rate-e2e`.
 acceptance: root cause + spec green; app fix stays unlanded (user-visible).
 validation: `npm run check` + spec
@@ -61,4 +61,5 @@ acceptance: list; nothing deleted.
 - Cleanup done: old dev reconciled, stale branches/worktrees/remotes gone, docs say main is live, `origin/dev` = main + cleanup.
 - Q4: local Supabase runs on lab2 (CLI via `node_modules/.bin`, slim stack); test:db green, e2e 24/25, review preview serves on :4178.
 - Box is RAM-tight (7.6 GB, swap full): run one browser-heavy worker at a time.
-- Running: Q7 quick-rate e2e failure. Next: Q5 mobile audit.
+- Q7 landed: e2e failure was a test bug (game pairs reshuffle after refresh); spec fixed, app untouched.
+- Running: Q5 mobile audit → branch `q5/mobile-polish`, unlanded (user-visible).

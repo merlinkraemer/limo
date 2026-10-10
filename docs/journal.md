@@ -14,3 +14,5 @@
 2026-10-10 orchestrator Q4 landed: local supabase up (slim), psql + chromium installed, test:db green, e2e 24/25
 2026-10-10 orchestrator Q7 followup: quick-rate e2e spec fails on lab2 (inside Q4 acceptance: e2e green)
 2026-10-10 orchestrator Q7 spawn: root-cause quick-rate e2e
+2026-10-10 orchestrator Q7 landed: test-only fix merged into dev (spec green, check green)
+2026-10-10 orchestrator Q5 spawn: mobile audit + bug-level fixes on q5/mobile-polish
