@@ -56,3 +56,13 @@ State: the redesign app commit `9471805` is on local `feat/cloudinary-uploads` o
 the staging workflow are on `origin/staging`, but that staging migration run failed
 before applying anything (empty `SUPABASE_ACCESS_TOKEN`), and production is neither
 migrated nor deployed. Don't push to `staging`/`main` or deploy unless the task says so.
+
+## Unattended
+
+platform: box (lab2)
+validation: `npm run check` (lint, typecheck, unit tests, build); `npm run test:e2e` too once local Supabase runs on lab2
+may land: tests, docs, scripts, CI-neutral tooling, non-visual backend fixes — on `dev` only, never `main`/`staging`
+must ask: user-visible (UI, copy, UX, visuals), data/schema/migrations, roadmap/scope, anything Mo would notice
+never: push `main`/`staging` (Vercel prod deploy / staging DB migration), `vercel` deploy/env/promote, `supabase db push`/link against remote projects, prod data, secrets
+scope fence: `supabase/migrations/` and `.github/workflows/` only inside a task that names them
+lane rules: feature branch → `staging` (live review) → PR `staging → main` (prod), see docs/DEPLOYMENT.md
