@@ -40,13 +40,12 @@ present functionality — see [ROADMAP.md](ROADMAP.md).
 
 ## Deployment state
 
-- Migrations `007`–`009` and the redesign app are committed. The migrations plus
-  `.github/workflows/db-migrate-staging.yml` are on `origin/staging`, but the staging
-  migration run for that push failed before applying anything (empty
-  `SUPABASE_ACCESS_TOKEN`).
-- The redesign app commit `9471805` is on local `feat/cloudinary-uploads` only; it is
-  not on `staging` or `main`. Production is neither migrated nor deployed with this work.
-  Details in [../DEPLOYMENT.md](../DEPLOYMENT.md).
+- `origin/main` is the live site (lemolist.com) and contains the redesign app, Cloudinary
+  uploads, quick-rate, migrations `007`–`009`, and
+  `.github/workflows/db-migrate-staging.yml`.
+- Whether `007`–`009` are applied to the hosted production and staging projects is
+  unverified from the repo. The one recorded staging migration run (see
+  [../DEPLOYMENT.md](../DEPLOYMENT.md)) failed before applying anything.
 
 ## Product vision (future, not shipped)
 
@@ -71,7 +70,7 @@ In (current):
   historical rating per row
 - matchup preference votes with real counts
 - ranked global leaderboard with name search and top-20/show-all pagination
-- basic staging workflow (currently blocked on secrets) and a production approval gate
+- basic staging workflow (last recorded run failed on a missing secret) and a production approval gate
 - free-tier infrastructure only
 
 Out for now (roadmap items are not commitments):
@@ -99,8 +98,8 @@ Out for now (roadmap items are not commitments):
   browser id, so it only covers a single Node process; a multi-instance deployment needs
   a shared store.
 - Free-tier Supabase/Cloudinary limits cap storage, bandwidth, and upload size.
-- Production deployment requires explicit approval; staging migration application is
-  currently blocked (see [../DEPLOYMENT.md](../DEPLOYMENT.md)).
+- Production deployment requires explicit approval; staging migration state is unverified
+  (see [../DEPLOYMENT.md](../DEPLOYMENT.md)).
 
 ## Related docs
 

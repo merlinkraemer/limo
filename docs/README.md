@@ -18,7 +18,6 @@ its area.
 | [TESTING.md](TESTING.md) | Testing strategy, conventions, E2E ordering, CI |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Staging/production topology, migration-first commit strategy, rollout guardrails |
 | [../supabase/README.md](../supabase/README.md) | Supabase/Postgres setup, migrations, storage bucket |
-| [todo.md](todo.md) | Current release checklist (transient, not a roadmap) |
 
 ## Repo entrypoints
 

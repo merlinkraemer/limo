@@ -1,8 +1,7 @@
 # Roadmap
 
 Sequenced direction for lemolist. There are no dates or delivery commitments: phases are
-ordered by dependency, not schedule. The current release checklist lives separately in
-[../todo.md](../todo.md).
+ordered by dependency, not schedule.
 
 Phase 0 comes first on purpose. The system-design questions below must be answered before
 further ranking or map features are built on top of the current base.
