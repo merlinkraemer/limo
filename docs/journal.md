@@ -11,3 +11,6 @@
 2026-10-10 orchestrator Q4 spawn: local Supabase CLI + docker stack, e2e, review preview
 2026-10-10 orchestrator Q3 landed: docs-truth merged into dev (docs only, check green); #19/#20 obsolete → Merlin
 2026-10-10 orchestrator - decided: Merlin took all recs: dev force-pushed to origin, stale remotes deleted, prod-deploy worktree removed (archive/prod-deploy), #19/#20 closed, drills kept, admin not now
+2026-10-10 orchestrator Q4 landed: local supabase up (slim), psql + chromium installed, test:db green, e2e 24/25
+2026-10-10 orchestrator Q7 followup: quick-rate e2e spec fails on lab2 (inside Q4 acceptance: e2e green)
+2026-10-10 orchestrator Q7 spawn: root-cause quick-rate e2e

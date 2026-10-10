@@ -35,7 +35,7 @@ acceptance: docs describe main as live; todo.md replaced or removed; issue verdi
 validation: `npm run check`
 do not touch: code.
 
-### Q4 Local Supabase on lab2 [running] [box]
+### Q4 Local Supabase on lab2 [landed] [box]
 goal: `supabase` CLI missing after `npm ci`; get `supabase start` + seed running in Docker so `npm run dev`, `test:db`, `test:e2e` and previews work.
 acceptance: `npm run test:e2e` green on lab2; `preview start limo web-review` serves with data.
 validation: `npm run test:e2e`
@@ -47,11 +47,18 @@ acceptance: issue list with screenshots + a fix branch for the top items, unland
 validation: `npm run check`, Playwright mobile viewport
 do not touch: data/schema.
 
+### Q7 Quick-rate e2e failure [running] [box]
+goal: `tests/e2e/07-quick-rate.spec.ts:87` fails on lab2 (re-rating shows 2/10, expects 9/10); find root cause, fix on `q7/quick-rate-e2e`.
+acceptance: root cause + spec green; app fix stays unlanded (user-visible).
+validation: `npm run check` + spec
+do not touch: migrations, remote Supabase.
+
 ### Q6 [mac] recon of Mac-only files [queued] [mac]
 goal: Mac checkout + sibling worktrees: anything bulky or Mac-only left (output/, logs/, .codex, .pi) worth keeping.
 acceptance: list; nothing deleted.
 
 ## Rundown
-- Q1: old dev's 6 commits all superseded or unportable; nothing to port.
-- Q2: removed 2 empty worktrees, 3 empty branches, 2 stashes (all tagged `archive/*`); rest in Waiting on Merlin.
-- Q3 landed on dev: docs say main is live, todo.md removed, prod migration state marked unverified. Next: Q4 local Supabase, then Q5 mobile audit.
+- Cleanup done: old dev reconciled, stale branches/worktrees/remotes gone, docs say main is live, `origin/dev` = main + cleanup.
+- Q4: local Supabase runs on lab2 (CLI via `node_modules/.bin`, slim stack); test:db green, e2e 24/25, review preview serves on :4178.
+- Box is RAM-tight (7.6 GB, swap full): run one browser-heavy worker at a time.
+- Running: Q7 quick-rate e2e failure. Next: Q5 mobile audit.
