@@ -16,19 +16,19 @@ AGENTS.md ## Unattended. Thread-specific limits: holiday 2026-10-30 → 11-16, n
 
 ## Queue
 
-### Q1 Reconcile old dev's 6 unique commits with main [queued] [box]
+### Q1 Reconcile old dev's 6 unique commits with main [running] [box]
 goal: old dev has admin mode (#18), Infisical, staging env/workflow, Leaderboard component extract, service-role-key drop, anon→publishable key rename; none are on main. Decide per commit: already superseded on main / port / drop.
 acceptance: table per commit with verdict + reason; ports on a branch off `dev`, unlanded (admin mode is user-visible).
 validation: `npm run check`
 do not touch: `main`, `staging`, remote branches, migrations.
 
-### Q2 Prune stale branches and worktrees [queued] [box]
+### Q2 Prune stale branches and worktrees [running] [box]
 goal: `feat/cloudinary-uploads`, `fix/ux-followup`, `fix/ux-image-perf`, `drill/prod-backup`, `drill/prod-migrate`, detached `limo-prod-deploy`, 2 old stashes, gone remotes. Most only add a "mark this checkout" docs commit.
 acceptance: list of what is unique per branch/stash; local worktrees with nothing unique removed (tag first, `archive/*`); anything unique → Waiting on Merlin.
 validation: `git worktree list`, `git branch -vv`
 do not touch: remote branches (deleting them is a push).
 
-### Q3 Docs truth pass [queued] [box]
+### Q3 Docs truth pass [running] [box]
 goal: AGENTS.md "State" paragraph, docs/todo.md (Cloudinary release; PR #24 is merged), README, DEPLOYMENT match what is live; check issues #19/#20 for obsolete ones.
 acceptance: docs describe main as live; todo.md replaced or removed; issue verdicts listed (closing them is Merlin's).
 validation: `npm run check`
