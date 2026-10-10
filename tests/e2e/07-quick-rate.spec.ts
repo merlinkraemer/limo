@@ -110,11 +110,20 @@ test.describe('quick game rating', () => {
     await detail.locator('.detail-actions').getByRole('button', { name: 'close' }).click();
     await expect(detail).toBeHidden();
 
-    // The same round is still up: pick the left card and re-rate from the game.
-    const leftCard = page.locator('.card-wrap[data-card-position="left"] button.qc');
-    await expect(leftCard).toBeVisible();
-    await leftCard.click();
-    await page.locator('[data-act="game-had-it"]').click();
+    // Rating refreshes the listings (new score order), which reshuffles the game
+    // pairs, so the rated listing is not necessarily on the left any more (and
+    // earlier tests leave more listings in the DB). Advance rounds until a card
+    // for it is up, then pick that card and re-rate from the game.
+    const hadIt = page.locator('[data-act="game-had-it"]');
+    const target = page.locator('.card-wrap button.qc', { hasText: leftName as string });
+    for (let round = 0; round < 10 && !(await target.isVisible().catch(() => false)); round++) {
+      await page.locator('.card-wrap button.qc').first().click();
+      await expect(hadIt).toBeVisible();
+      await page.getByRole('button', { name: 'next!' }).click();
+    }
+    await expect(target).toBeVisible();
+    await target.click();
+    await hadIt.click();
     rate = page.getByRole('dialog', { name: 'rate this lemonade' });
     await expect(rate).toBeVisible();
     await expect(rate.locator('.traits')).toBeHidden();
