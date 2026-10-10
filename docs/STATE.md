@@ -38,7 +38,7 @@ acceptance: docs describe main as live; todo.md replaced or removed; issue verdi
 validation: `npm run check`
 do not touch: code.
 
-### Q4 Local Supabase on lab2 [queued] [box]
+### Q4 Local Supabase on lab2 [running] [box]
 goal: `supabase` CLI missing after `npm ci`; get `supabase start` + seed running in Docker so `npm run dev`, `test:db`, `test:e2e` and previews work.
 acceptance: `npm run test:e2e` green on lab2; `preview start limo web-review` serves with data.
 validation: `npm run test:e2e`

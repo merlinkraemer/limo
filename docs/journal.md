@@ -8,3 +8,4 @@
 2026-10-10 orchestrator Q3 spawn: docs truth pass (worktree subagent)
 2026-10-10 orchestrator Q1 landed: verdict only, no port; admin rebuild parked for Merlin
 2026-10-10 orchestrator Q2 landed: removed limo-ux-fix/followup worktrees, 3 docs-only branches, 2 cli-cache stashes (archive/* tags)
+2026-10-10 orchestrator Q4 spawn: local Supabase CLI + docker stack, e2e, review preview
