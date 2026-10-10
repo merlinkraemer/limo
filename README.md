@@ -79,6 +79,7 @@ src/
 ├── lib/
 │   ├── browser-identity.ts          # HttpOnly browser-id cookie (rating/vote dedup)
 │   ├── cloudinary.ts                # lazy Cloudinary client
+│   ├── image-hosts.ts               # allowed image hosts
 │   ├── image-url.ts                 # allowlist for stored image URLs
 │   ├── listing-metrics.ts           # ranking, provisional state, score labels
 │   ├── matchup.ts                   # deterministic matchup deck and outcomes
@@ -91,7 +92,7 @@ src/
 └── types/lemonade.ts                # DB types, Zod schemas
 
 supabase/
-├── migrations/                      # 001–004 original line; 007–009 redesign; 005/006 reserved on dev
+├── migrations/                      # 001–004 original line; 007–009 redesign; 005/006 unused (were taken by the old `dev` line)
 └── seed.sql                         # 20 sample entries
 
 tests/
@@ -109,4 +110,3 @@ Full index: [docs/README.md](docs/README.md).
 - [docs/TESTING.md](docs/TESTING.md) — testing strategy and conventions
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — staging/production topology, migration-first rollout order
 - [supabase/README.md](supabase/README.md) — database and storage setup
-- [docs/todo.md](docs/todo.md) — current release checklist

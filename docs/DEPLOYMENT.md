@@ -10,7 +10,7 @@ together with [supabase/README.md](../supabase/README.md) (migration semantics) 
 |--------|---------|------------------|-------|
 | Production | `main` | `mpbpzxkttsqmsaazxbkk` (`lemolist.com`) | Vercel production branch `main`, domain `lemolist.com`; protected branch |
 | Staging | `staging` | `xduxzpriixkxrygulgon` (`limo-staging`) | Vercel project `limo`; preview/staging deploy |
-| Integration line | `dev` | — | Admin/auth work; owns migrations `005`/`006` (`dev`'s `db-migrate.yml`) |
+| Integration line | `dev` | — | Local `dev` was reset to `main`; the old admin/auth line (migrations `005`/`006`, its `db-migrate.yml`) is kept as `archive/dev-pre-lab2` |
 
 The redesign migrations are `007`–`009` (after `004`) precisely because `005`/`006` are
 taken by the `dev` line. Between them the versions have a gap, which is fine: Supabase
@@ -23,10 +23,9 @@ unapplied admin migrations above `009` (preferred, keeps versions monotonic) or 
 `supabase db push --include-all` deliberately — and verify
 `supabase migration list --linked` before touching production.
 
-### Known `dev`-line conflicts (reconcile before merging `dev`)
+### Known old-`dev`-line conflicts (only relevant if porting from `archive/dev-pre-lab2`)
 
-This branch does **not** merge `dev`, modify production, or change `dev`'s workflows. The
-merge-time breaks below are recorded so the reconciliation is explicit:
+`main` does not contain the old `dev` line. The merge-time breaks below are recorded so the reconciliation is explicit:
 
 1. **`dev`'s production workflow auto-pushes migrations to production on `main`.**
    `dev`'s `.github/workflows/db-migrate.yml` has a job gated only by
@@ -125,47 +124,34 @@ production job (on `main`). Both files must not be allowed to run for the same s
 push once `dev` merges — reconcile them into the single guarded staging workflow plus a
 separately approved production workflow rather than double-applying.
 
-## Rollout status and blockers (staging)
+## Rollout status (staging)
 
-- `origin/staging` HEAD is `b91fb0e`, which already contains migrations `007`–`009` and
+- `origin/main` contains migrations `007`–`009` and
   `.github/workflows/db-migrate-staging.yml`.
-- The push triggered `db-migrate-staging` run
-  [36246209060](https://github.com/merlinkraemer/limo/actions/runs/36246209060), which
-  **failed** in "Link staging project" because `SUPABASE_ACCESS_TOKEN` was empty. The job
-  aborts before `supabase db push`, so migrations `007`–`009` are not confirmed applied to
-  `limo-staging`.
-- Unblocking needs the `SUPABASE_ACCESS_TOKEN` repository secret (plus
-  `SUPABASE_STAGING_DB_PASSWORD` for the link step). Once set, the workflow prints
-  `supabase migration list --linked` and runs `db push --dry-run` before applying
-  anything, so a history mismatch (e.g. staging has `dev`'s `005`/`006` while this branch
-  does not) fails the run instead of pushing. If that happens, bring the `dev` migration
-  files into the local tree under the merge rule above, re-run the dry run, and only then
-  apply.
-- The redesign app commit `9471805` is not an ancestor of `origin/staging`; it sits on
-  local `feat/cloudinary-uploads` (`origin/feat/cloudinary-uploads` is 3 commits behind).
-  Do not push app code to staging until the migration workflow is green.
-- The local CLI cannot run `supabase migration list --linked` without the staging
-  `SUPABASE_DB_PASSWORD`; supply it from a secret manager, never paste it into a tracked
-  file or shell history.
-- Vercel Git auto-deploy has produced no deployment since 2026-03-30 and no staging
-  branch alias exists. Until that integration is confirmed with a throwaway push, treat
-  auto-deploy as unavailable and use an explicitly authorized Vercel preview deploy after
-  the migration workflow is green. Migration-first ordering applies either way.
+- The workflow run triggered by the original staging push
+  ([36246209060](https://github.com/merlinkraemer/limo/actions/runs/36246209060))
+  **failed** in "Link staging project" because `SUPABASE_ACCESS_TOKEN` was empty, before
+  `supabase db push`. Whether the secrets were fixed and `007`–`009` are applied to
+  `limo-staging` is **unverified** from the repo; check with
+  `supabase migration list --linked` (needs the staging `SUPABASE_DB_PASSWORD` from a
+  secret manager, never a tracked file or shell history).
+- Vercel Git auto-deploy status is unverified; the `lemolist.com` production deployment
+  tracks `main`. Migration-first ordering applies either way.
 - Rotate the staging DB password if it was ever shared outside the secret store, then
   update the `SUPABASE_STAGING_DB_PASSWORD` repository secret.
 
 ## Production
 
-Production is **not** migrated or deployed by the staging workflow. Production changes
+Production migrations are **not** applied by the staging workflow. Production changes
 require: migrations applied to a restored production snapshot or to production itself
 under separate approval, `npm run check`/`test:e2e` green, and a PR to the protected
 `main` branch. Do not run `supabase db push` against the production project from a
 staging run, and do not put the production ref or password into the staging workflow.
 
-Current state: nothing from this work has been applied to production
-(`mpbpzxkttsqmsaazxbkk`). The redesign app commit is not on `main` and neither workflow
-on `main` pushes migrations, so production still serves the pre-redesign app; the hosted
-migration history is not verified in this repo.
+Current state: the app code on `main` (the redesign, which depends on migrations
+`007`–`009`) is what lemolist.com serves. Whether `007`–`009` are applied to production
+(`mpbpzxkttsqmsaazxbkk`) is unverified from the repo; neither workflow on `main` pushes
+migrations to production.
 
 ## Rollback
 
