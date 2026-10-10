@@ -12,12 +12,8 @@ lemolist.com works well on phones for Mo and strangers logging lemonades. Done f
 AGENTS.md ## Unattended. Thread-specific limits: holiday 2026-10-30 → 11-16, nothing user-visible lands.
 
 ## Waiting on Merlin
-1. Force-push local `dev` (= main + state) over `origin/dev` — rec: yes; Q1 found nothing worth porting — branch: `dev` (old line kept as `archive/dev-pre-lab2`)
-2. Drill branches `drill/prod-backup` (prod-backup-drill.yml) and `drill/prod-migrate` (db-migrate-production.yml), also on origin — rec: keep until prod-migration path is decided — branch: same names
-3. Worktree `limo-prod-deploy` (detached, only holds a `.vercel/` link) — rec: remove — branch: none
-4. Stale remotes `feat/cloudinary-uploads` (0 unique), `feat/staging-environment` (old), `docs/tag-based-ratings-idea` (idea doc, PR #22) — rec: delete first two, keep idea PR — needs a push
-6. Close issues #19 (staging db push checklist) and #20 (vercel deploy + envs) — rec: close both, obsolete — branch: none
-5. Rebuild admin mode on main (old #18 can't port: Leaderboard.tsx gone, RLS changed) — rec: not now
+_(none)_
+Parked: admin mode rebuild (not now). Drill branches `drill/prod-backup`, `drill/prod-migrate` kept until the prod-migration path is decided.
 
 ## Queue
 

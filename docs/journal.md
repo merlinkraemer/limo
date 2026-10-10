@@ -10,3 +10,4 @@
 2026-10-10 orchestrator Q2 landed: removed limo-ux-fix/followup worktrees, 3 docs-only branches, 2 cli-cache stashes (archive/* tags)
 2026-10-10 orchestrator Q4 spawn: local Supabase CLI + docker stack, e2e, review preview
 2026-10-10 orchestrator Q3 landed: docs-truth merged into dev (docs only, check green); #19/#20 obsolete → Merlin
+2026-10-10 orchestrator - decided: Merlin took all recs: dev force-pushed to origin, stale remotes deleted, prod-deploy worktree removed (archive/prod-deploy), #19/#20 closed, drills kept, admin not now
