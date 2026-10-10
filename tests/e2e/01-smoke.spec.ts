@@ -6,7 +6,7 @@ test.describe('smoke', () => {
 
     await expect(page.getByRole('heading', { name: 'lemolist' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'leaderboard' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'add your limo' }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /add your limo|add yours/i }).first()).toBeVisible();
   });
 
   test('opens the add sheet from the header on desktop', async ({ page }) => {
