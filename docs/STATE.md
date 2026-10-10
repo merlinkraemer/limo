@@ -12,17 +12,21 @@ lemolist.com works well on phones for Mo and strangers logging lemonades. Done f
 AGENTS.md ## Unattended. Thread-specific limits: holiday 2026-10-30 → 11-16, nothing user-visible lands.
 
 ## Waiting on Merlin
-1. Push local `dev` (now = `origin/main`) over `origin/dev` — needs a force push — rec: yes, after Q1 confirms nothing from old dev is lost — branch: `dev` (old dev kept as `archive/dev-pre-lab2`)
+1. Force-push local `dev` (= main + state) over `origin/dev` — rec: yes; Q1 found nothing worth porting — branch: `dev` (old line kept as `archive/dev-pre-lab2`)
+2. Drill branches `drill/prod-backup` (prod-backup-drill.yml) and `drill/prod-migrate` (db-migrate-production.yml), also on origin — rec: keep until prod-migration path is decided — branch: same names
+3. Worktree `limo-prod-deploy` (detached, only holds a `.vercel/` link) — rec: remove — branch: none
+4. Stale remotes `feat/cloudinary-uploads` (0 unique), `feat/staging-environment` (old), `docs/tag-based-ratings-idea` (idea doc, PR #22) — rec: delete first two, keep idea PR — needs a push
+5. Rebuild admin mode on main (old #18 can't port: Leaderboard.tsx gone, RLS changed) — rec: not now
 
 ## Queue
 
-### Q1 Reconcile old dev's 6 unique commits with main [running] [box]
+### Q1 Reconcile old dev's 6 unique commits with main [landed] [box]
 goal: old dev has admin mode (#18), Infisical, staging env/workflow, Leaderboard component extract, service-role-key drop, anon→publishable key rename; none are on main. Decide per commit: already superseded on main / port / drop.
 acceptance: table per commit with verdict + reason; ports on a branch off `dev`, unlanded (admin mode is user-visible).
 validation: `npm run check`
 do not touch: `main`, `staging`, remote branches, migrations.
 
-### Q2 Prune stale branches and worktrees [running] [box]
+### Q2 Prune stale branches and worktrees [landed] [box]
 goal: `feat/cloudinary-uploads`, `fix/ux-followup`, `fix/ux-image-perf`, `drill/prod-backup`, `drill/prod-migrate`, detached `limo-prod-deploy`, 2 old stashes, gone remotes. Most only add a "mark this checkout" docs commit.
 acceptance: list of what is unique per branch/stash; local worktrees with nothing unique removed (tag first, `archive/*`); anything unique → Waiting on Merlin.
 validation: `git worktree list`, `git branch -vv`
@@ -51,7 +55,6 @@ goal: Mac checkout + sibling worktrees: anything bulky or Mac-only left (output/
 acceptance: list; nothing deleted.
 
 ## Rundown
-- Moved from Mac: all branches, 5 worktrees, 2 stashes, .env.local/.vercel; HEADs match the Mac.
-- `npm run check` green on lab2 on main; first run had a flaky typecheck fail (fresh install race), rerun green.
-- Local `dev` reset to `origin/main`; old dev kept as `archive/dev-pre-lab2`.
-- Next: Q1–Q3 cleanup, then Q4 local DB, then Q5 mobile polish.
+- Q1: old dev's 6 commits all superseded or unportable; nothing to port.
+- Q2: removed 2 empty worktrees, 3 empty branches, 2 stashes (all tagged `archive/*`); rest in Waiting on Merlin.
+- Q3 docs pass running. Next: Q4 local Supabase, then Q5 mobile audit.
