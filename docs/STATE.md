@@ -12,9 +12,9 @@ lemolist.com works well on phones for Mo and strangers logging lemonades. Done f
 AGENTS.md ## Unattended. Thread-specific limits: holiday 2026-10-30 → 11-16, nothing user-visible lands.
 
 ## Waiting on Merlin
-1. Land mobile polish (3 CSS bug fixes: start-page sideways scroll, broken-photo label overflow, comment tap target) — rec: land after holiday review on a phone — branch: `q5/mobile-polish` (audit doc + before/after screenshots in docs/mobile-audit-2026-10.md)
-2. Mobile design proposals: score stars in 2 rows of 5, sticky submit on sheets, shorter game cards — rec: stars yes, others later — branch: none (in audit doc)
-Parked: admin mode rebuild (not now). Drill branches `drill/prod-backup`, `drill/prod-migrate` kept until the prod-migration path is decided.
+1. Review mobile polish on a phone after the holiday (from 2026-11-16), then land — branch: `q5/mobile-polish`
+
+Parked: mobile design proposals (no new ideas for now — Merlin: cleanup and fixes only). Admin mode rebuild (not now). Drill branches kept until the prod-migration path is decided.
 
 ## Queue
 
