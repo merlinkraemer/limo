@@ -64,4 +64,5 @@ acceptance: list; nothing deleted.
 - Box is RAM-tight (7.6 GB, swap full): run one browser-heavy worker at a time.
 - Q7 landed: e2e failure was a test bug (game pairs reshuffle after refresh); spec fixed, app untouched.
 - Q5 done: audit + 3 CSS fixes on `q5/mobile-polish`, unlanded (user-visible). 3 design proposals in the doc.
-- Running: Q8 01-smoke selector picks a desktop-hidden button (fails on dev too) — test-only fix on `q8/smoke-selector`.
+- Q8 landed: 01-smoke selector now matches the visible header button; test-only.
+- Queue empty except Q6 [mac]; next work waits on Merlin's mobile decisions.

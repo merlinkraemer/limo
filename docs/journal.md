@@ -18,3 +18,4 @@
 2026-10-10 orchestrator Q5 spawn: mobile audit + bug-level fixes on q5/mobile-polish
 2026-10-10 orchestrator Q5 blocked: done, user-visible → Waiting on Merlin (branch q5/mobile-polish)
 2026-10-10 orchestrator Q8 followup: 01-smoke fails on dev (selector hits hidden .top-actions button); test-only fix
+2026-10-10 orchestrator Q8 landed: smoke selector test fix merged into dev (01-smoke 2/2)
